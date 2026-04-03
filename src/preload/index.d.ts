@@ -842,12 +842,13 @@ declare global {
       offOutput: (channel: string) => void
       getPort: (cwd: string) => Promise<{ port: number | null }>
     }
-    terminalOps: {
-      create: (
-        worktreeId: string,
-        cwd: string,
-        shell?: string
-      ) => Promise<{ success: boolean; cols?: number; rows?: number; error?: string }>
+  terminalOps: {
+  create: (
+    worktreeId: string,
+    cwd: string,
+    shell?: string,
+    startupCommand?: string
+  ) => Promise<{ success: boolean; cols?: number; rows?: number; error?: string }>
       write: (worktreeId: string, data: string) => void
       resize: (worktreeId: string, cols: number, rows: number) => Promise<void>
       destroy: (worktreeId: string) => Promise<void>
@@ -899,9 +900,19 @@ declare global {
       ) => Promise<void>
       ghosttySetFocus: (worktreeId: string, focused: boolean) => Promise<void>
       ghosttyPasteText: (worktreeId: string, text: string) => Promise<void>
-      ghosttyDestroySurface: (worktreeId: string) => Promise<void>
-      ghosttyShutdown: () => Promise<void>
-    }
+    ghosttyDestroySurface: (worktreeId: string) => Promise<void>
+    ghosttyShutdown: () => Promise<void>
+  }
+  omxOps: {
+    status: (
+      cwd: string
+    ) => Promise<{
+      success: boolean
+      modes: Array<{ mode: string; active: boolean; phase: string }>
+      error?: string
+    }>
+    killSession: (sessionName: string) => Promise<{ success: boolean; error?: string }>
+  }
     gitOps: {
       // Get file statuses for a worktree
       getFileStatuses: (worktreePath: string) => Promise<{

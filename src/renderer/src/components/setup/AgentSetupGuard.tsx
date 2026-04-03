@@ -15,6 +15,7 @@ export function AgentSetupGuard(): React.JSX.Element | null {
     opencode: boolean
     claude: boolean
     codex: boolean
+    omx: boolean
   } | null>(null)
 
   useEffect(() => {
@@ -29,11 +30,12 @@ export function AgentSetupGuard(): React.JSX.Element | null {
 
         setDetectedSdks(result)
 
-        const { opencode, claude, codex } = result
-        const found: Array<'opencode' | 'claude-code' | 'codex'> = []
+        const { opencode, claude, codex, omx } = result
+        const found: Array<'opencode' | 'claude-code' | 'codex' | 'omx'> = []
         if (opencode) found.push('opencode')
         if (claude) found.push('claude-code')
         if (codex) found.push('codex')
+        if (omx) found.push('omx')
 
         if (found.length === 0) {
           setStatus('none-found')

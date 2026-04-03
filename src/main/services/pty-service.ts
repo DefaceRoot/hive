@@ -26,6 +26,7 @@ interface PtyInstance {
 export interface PtyCreateOpts {
   cwd: string
   shell?: string
+  startupCommand?: string
   env?: Record<string, string>
   cols?: number
   rows?: number
@@ -117,6 +118,21 @@ class PtyService {
     })
 
     this.ptys.set(id, instance)
+
+    if (opts.startupCommand?.trim()) {
+      const startupCommand = opts.startupCommand
+      setTimeout(() => {
+        try {
+          ptyProcess.write(`${startupCommand}\r`)
+        } catch (err) {
+          log.error(
+            'Error writing PTY startup command',
+            err instanceof Error ? err : new Error(String(err)),
+            { id }
+          )
+        }
+      }, 20)
+    }
 
     return { cols, rows }
   }

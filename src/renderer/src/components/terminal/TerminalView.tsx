@@ -13,7 +13,9 @@ import '@/styles/xterm.css'
 interface TerminalViewProps {
   worktreeId: string
   cwd: string
+  startupCommand?: string
   isVisible?: boolean
+  backendType?: TerminalBackendType
 }
 
 /** Imperative handle exposed to parent (TerminalManager) */
@@ -34,7 +36,7 @@ function createBackend(type: TerminalBackendType): ITerminalBackend {
 }
 
 export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView(
-  { worktreeId, cwd, isVisible = true },
+  { worktreeId, cwd, startupCommand, isVisible = true, backendType },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -209,6 +211,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(fu
         {
           worktreeId,
           cwd,
+          startupCommand,
           fontFamily: config.fontFamily,
           fontSize: config.fontSize,
           cursorStyle: config.cursorStyle,
@@ -225,7 +228,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(fu
 
       backendRef.current = backend
     },
-    [worktreeId, cwd, destroyTerminal]
+    [worktreeId, cwd, destroyTerminal, startupCommand]
   )
 
   // Handle restart — destroy old PTY and re-create terminal
@@ -249,12 +252,12 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(fu
     }
 
     await restartTerminal(worktreeId, cwd, shell)
-    setupTerminal(embeddedTerminalBackend || 'xterm')
-  }, [worktreeId, cwd, restartTerminal, setupTerminal, embeddedTerminalBackend])
+    setupTerminal(backendType || embeddedTerminalBackend || 'xterm')
+  }, [worktreeId, cwd, restartTerminal, setupTerminal, embeddedTerminalBackend, backendType])
 
   // Initialize terminal on mount, and re-create when backend setting changes
   useEffect(() => {
-    setupTerminal(embeddedTerminalBackend || 'xterm')
+    setupTerminal(backendType || embeddedTerminalBackend || 'xterm')
 
     return () => {
       if (backendRef.current) {
@@ -264,7 +267,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(fu
       initializedRef.current = null
       activeBackendTypeRef.current = null
     }
-  }, [setupTerminal, embeddedTerminalBackend])
+  }, [setupTerminal, embeddedTerminalBackend, backendType])
 
   // Restart the Ghostty terminal when font size changes so the new size takes effect.
   // We track the previous value so the effect only fires on actual changes, not on mount.

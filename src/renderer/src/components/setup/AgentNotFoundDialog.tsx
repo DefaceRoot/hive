@@ -19,8 +19,8 @@ export function AgentNotFoundDialog(): React.JSX.Element {
             No AI Agent Found
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Hive requires OpenCode, Claude Code, or Codex to be installed on your system. Please
-            install one of them and restart Hive.
+            Hive requires OpenCode, Claude Code, Codex, or OMX to be installed on your system.
+            Please install one of them and restart Hive.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

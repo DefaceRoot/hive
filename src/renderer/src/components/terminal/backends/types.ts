@@ -8,6 +8,7 @@ export type TerminalBackendType = 'xterm' | 'ghostty'
 export interface TerminalOpts {
   worktreeId: string
   cwd: string
+  startupCommand?: string
   fontFamily?: string
   fontSize?: number
   cursorStyle?: 'block' | 'bar' | 'underline'

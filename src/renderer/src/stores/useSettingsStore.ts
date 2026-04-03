@@ -90,7 +90,7 @@ export interface AppSettings {
   showUsageIndicator: boolean
 
   // Agent SDK
-  defaultAgentSdk: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+  defaultAgentSdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
 
   // Setup
   initialSetupComplete: boolean
@@ -165,7 +165,7 @@ interface SettingsState extends AppSettings {
   isLoading: boolean
 
   // Cached SDK availability (non-persisted, re-detected each launch)
-  availableAgentSdks: { opencode: boolean; claude: boolean; codex: boolean } | null
+  availableAgentSdks: { opencode: boolean; claude: boolean; codex: boolean; omx: boolean } | null
 
   // Actions
   openSettings: (section?: string) => void
@@ -348,8 +348,8 @@ export const useSettingsStore = create<SettingsState>()(
           delete current[agentSdk]
         }
         set({ selectedModelByProvider: current })
-        // Push to backend (skip for terminal — no backend service, or when caller already pushed)
-        if (agentSdk !== 'terminal' && !options?.skipBackendPush) {
+        // Push to backend (skip for terminal/omx — no model backend service, or when caller already pushed)
+        if (agentSdk !== 'terminal' && agentSdk !== 'omx' && !options?.skipBackendPush) {
           try {
             await window.opencodeOps.setModel(model ? { ...model, agentSdk } : null)
           } catch (error) {

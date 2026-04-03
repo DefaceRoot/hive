@@ -25,7 +25,7 @@ interface Session {
   name: string | null
   status: 'active' | 'completed' | 'error'
   opencode_session_id: string | null
-  agent_sdk: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+  agent_sdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
   mode: SessionMode
   model_provider_id: string | null
   model_id: string | null
@@ -85,7 +85,7 @@ interface SessionState {
   createSession: (
     worktreeId: string,
     projectId: string,
-    agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'terminal',
+    agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal',
     initialMode?: SessionMode
   ) => Promise<{ success: boolean; session?: Session; error?: string }>
   closeSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
@@ -139,7 +139,7 @@ interface SessionState {
   loadConnectionSessions: (connectionId: string) => Promise<void>
   createConnectionSession: (
     connectionId: string,
-    agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'terminal',
+    agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal',
     initialMode?: SessionMode
   ) => Promise<{ success: boolean; session?: Session; error?: string }>
   setActiveConnectionSession: (sessionId: string | null) => void
@@ -167,6 +167,17 @@ function findSessionScope(
     }
   }
   return null
+}
+
+function isTerminalLikeAgentSdk(agentSdk: Session['agent_sdk']): boolean {
+  return agentSdk === 'terminal' || agentSdk === 'omx'
+}
+
+function createOmxTmuxSessionId(prefix: 'wt' | 'conn'): string {
+  const suffix = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 12)
+  return `hive-omx-${prefix}-${suffix}`
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -290,7 +301,7 @@ export const useSessionStore = create<SessionState>()(
       createSession: async (
         worktreeId: string,
         projectId: string,
-        agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'terminal',
+        agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal',
         initialMode?: SessionMode
       ) => {
         try {
@@ -299,12 +310,12 @@ export const useSessionStore = create<SessionState>()(
           const defaultAgentSdk =
             agentSdkOverride ?? useSettingsStore.getState().defaultAgentSdk ?? 'opencode'
 
-          const isTerminal = defaultAgentSdk === 'terminal'
+          const isTerminalLike = defaultAgentSdk === 'terminal' || defaultAgentSdk === 'omx'
 
-          // Terminal sessions skip model resolution entirely
+          // Terminal/OMX sessions skip model resolution entirely
           let defaultModel: { providerID: string; modelID: string; variant?: string } | null = null
 
-          if (!isTerminal) {
+          if (!isTerminalLike) {
             const { resolveModelForSdk } = await import('./useSettingsStore')
             const configuredDefaultSdk = useSettingsStore.getState().defaultAgentSdk ?? 'opencode'
 
@@ -353,11 +364,19 @@ export const useSessionStore = create<SessionState>()(
 
           const existingSessions = get().sessionsByWorktree.get(worktreeId) || []
           const sessionNumber = existingSessions.length + 1
+          const omxSessionId =
+            defaultAgentSdk === 'omx' ? createOmxTmuxSessionId('wt') : null
 
           const session = await window.db.session.create({
             worktree_id: worktreeId,
             project_id: projectId,
-            name: isTerminal ? `Terminal ${sessionNumber}` : `Session ${sessionNumber}`,
+            name:
+              defaultAgentSdk === 'omx'
+                ? `OMX ${sessionNumber}`
+                : defaultAgentSdk === 'terminal'
+                  ? `Terminal ${sessionNumber}`
+                  : `Session ${sessionNumber}`,
+            opencode_session_id: omxSessionId,
             agent_sdk: defaultAgentSdk,
             mode: initialMode || 'build',
             ...(defaultModel
@@ -418,7 +437,7 @@ export const useSessionStore = create<SessionState>()(
           for (const sessions of get().sessionsByWorktree.values()) {
             const found = sessions.find((s) => s.id === sessionId)
             if (found) {
-              isTerminalSession = found.agent_sdk === 'terminal'
+              isTerminalSession = isTerminalLikeAgentSdk(found.agent_sdk)
               break
             }
           }
@@ -426,7 +445,7 @@ export const useSessionStore = create<SessionState>()(
             for (const sessions of get().sessionsByConnection.values()) {
               const found = sessions.find((s) => s.id === sessionId)
               if (found) {
-                isTerminalSession = found.agent_sdk === 'terminal'
+                isTerminalSession = isTerminalLikeAgentSdk(found.agent_sdk)
                 break
               }
             }
@@ -1481,7 +1500,7 @@ export const useSessionStore = create<SessionState>()(
       // Create a session scoped to a connection
       createConnectionSession: async (
         connectionId: string,
-        agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'terminal',
+        agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal',
         initialMode?: SessionMode
       ) => {
         try {
@@ -1495,13 +1514,14 @@ export const useSessionStore = create<SessionState>()(
 
           // Determine default model and agent SDK from global settings
           let defaultModel: { providerID: string; modelID: string; variant?: string } | null = null
-          let defaultAgentSdk: 'opencode' | 'claude-code' | 'codex' | 'terminal' = 'opencode'
+          let defaultAgentSdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal' =
+            'opencode'
           try {
             const { useSettingsStore } = await import('./useSettingsStore')
             defaultAgentSdk =
               agentSdkOverride ?? useSettingsStore.getState().defaultAgentSdk ?? 'opencode'
             // Terminal sessions skip model resolution
-            if (defaultAgentSdk !== 'terminal') {
+            if (defaultAgentSdk !== 'terminal' && defaultAgentSdk !== 'omx') {
               const configuredDefaultSdk = useSettingsStore.getState().defaultAgentSdk ?? 'opencode'
 
               // Priority 1: mode-specific default (only when session SDK matches the
@@ -1528,12 +1548,20 @@ export const useSessionStore = create<SessionState>()(
           const isTerminal = defaultAgentSdk === 'terminal'
           const existingSessions = get().sessionsByConnection.get(connectionId) || []
           const sessionNumber = existingSessions.length + 1
+          const omxSessionId =
+            defaultAgentSdk === 'omx' ? createOmxTmuxSessionId('conn') : null
 
           const session = await window.db.session.create({
             worktree_id: null,
             project_id: projectId,
             connection_id: connectionId,
-            name: isTerminal ? `Terminal ${sessionNumber}` : `Session ${sessionNumber}`,
+            name:
+              defaultAgentSdk === 'omx'
+                ? `OMX ${sessionNumber}`
+                : isTerminal
+                  ? `Terminal ${sessionNumber}`
+                  : `Session ${sessionNumber}`,
+            opencode_session_id: omxSessionId,
             agent_sdk: defaultAgentSdk,
             ...(defaultModel
               ? {

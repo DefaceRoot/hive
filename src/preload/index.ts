@@ -1517,9 +1517,10 @@ const terminalOps = {
   create: (
     worktreeId: string,
     cwd: string,
-    shell?: string
+    shell?: string,
+    startupCommand?: string
   ): Promise<{ success: boolean; cols?: number; rows?: number; error?: string }> =>
-    ipcRenderer.invoke('terminal:create', worktreeId, cwd, shell),
+    ipcRenderer.invoke('terminal:create', worktreeId, cwd, shell, startupCommand),
 
   write: (worktreeId: string, data: string): void =>
     ipcRenderer.send('terminal:write', worktreeId, data),
@@ -1629,6 +1630,19 @@ const terminalOps = {
     ipcRenderer.invoke('terminal:ghostty:destroySurface', worktreeId),
 
   ghosttyShutdown: (): Promise<void> => ipcRenderer.invoke('terminal:ghostty:shutdown')
+}
+
+const omxOps = {
+  status: (
+    cwd: string
+  ): Promise<{
+    success: boolean
+    modes: Array<{ mode: string; active: boolean; phase: string }>
+    error?: string
+  }> => ipcRenderer.invoke('omx:status', cwd),
+
+  killSession: (sessionName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('omx:killSession', sessionName)
 }
 
 const updaterOps = {
@@ -1927,6 +1941,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('loggingOps', loggingOps)
     contextBridge.exposeInMainWorld('scriptOps', scriptOps)
     contextBridge.exposeInMainWorld('terminalOps', terminalOps)
+    contextBridge.exposeInMainWorld('omxOps', omxOps)
     contextBridge.exposeInMainWorld('updaterOps', updaterOps)
     contextBridge.exposeInMainWorld('connectionOps', connectionOps)
     contextBridge.exposeInMainWorld('usageOps', usageOps)
@@ -1961,6 +1976,8 @@ if (process.contextIsolated) {
   window.scriptOps = scriptOps
   // @ts-expect-error (define in dts)
   window.terminalOps = terminalOps
+  // @ts-expect-error (define in dts)
+  window.omxOps = omxOps
   // @ts-expect-error (define in dts)
   window.updaterOps = updaterOps
   // @ts-expect-error (define in dts)

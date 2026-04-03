@@ -73,7 +73,7 @@ interface SessionTabProps {
   sessionId: string
   name: string
   isActive: boolean
-  agentSdk: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+  agentSdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
   onClick: () => void
   onClose: (e: React.MouseEvent) => void
   onMiddleClick: (e: React.MouseEvent) => void
@@ -185,10 +185,13 @@ const SessionTab = memo(function SessionTab({
             isDragOver && 'bg-accent/50'
           )}
         >
-          {agentSdk === 'terminal' ? (
+          {agentSdk === 'terminal' || agentSdk === 'omx' ? (
             <TerminalSquare
-              className="h-3 w-3 text-emerald-500 flex-shrink-0"
-              data-testid={`tab-terminal-${sessionId}`}
+              className={cn(
+                'h-3 w-3 flex-shrink-0',
+                agentSdk === 'omx' ? 'text-violet-500' : 'text-emerald-500'
+              )}
+              data-testid={`tab-${agentSdk}-${sessionId}`}
             />
           ) : (
             <>
@@ -796,7 +799,7 @@ export function SessionTabs(): React.JSX.Element | null {
 
   // Handle creating a new session with a specific agent SDK (from context menu)
   const handleCreateSessionWithSdk = async (
-    sdk: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+    sdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
   ) => {
     if (isConnectionMode && selectedConnectionId) {
       const result = await createConnectionSession(selectedConnectionId, sdk)
@@ -1049,9 +1052,15 @@ export function SessionTabs(): React.JSX.Element | null {
                 New Codex Session
               </ContextMenuItem>
             )}
+            {availableAgentSdks?.omx && (
+              <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('omx')}>
+                New OMX Session
+              </ContextMenuItem>
+            )}
             {(availableAgentSdks?.opencode ||
               availableAgentSdks?.claude ||
-              availableAgentSdks?.codex) && <ContextMenuSeparator />}
+              availableAgentSdks?.codex ||
+              availableAgentSdks?.omx) && <ContextMenuSeparator />}
             <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('terminal')}>
               <TerminalSquare className="h-4 w-4 mr-2 text-emerald-500" />
               New Terminal
