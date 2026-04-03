@@ -434,10 +434,12 @@ export const useSessionStore = create<SessionState>()(
         try {
           // Check if this is a terminal session before removing from state
           let isTerminalSession = false
+          let omxTmuxSessionId: string | null = null
           for (const sessions of get().sessionsByWorktree.values()) {
             const found = sessions.find((s) => s.id === sessionId)
             if (found) {
               isTerminalSession = isTerminalLikeAgentSdk(found.agent_sdk)
+              omxTmuxSessionId = found.agent_sdk === 'omx' ? found.opencode_session_id : null
               break
             }
           }
@@ -446,6 +448,7 @@ export const useSessionStore = create<SessionState>()(
               const found = sessions.find((s) => s.id === sessionId)
               if (found) {
                 isTerminalSession = isTerminalLikeAgentSdk(found.agent_sdk)
+                omxTmuxSessionId = found.agent_sdk === 'omx' ? found.opencode_session_id : null
                 break
               }
             }
@@ -460,6 +463,13 @@ export const useSessionStore = create<SessionState>()(
 
           // Destroy PTY for terminal sessions
           if (isTerminalSession) {
+            if (omxTmuxSessionId) {
+              try {
+                await window.omxOps.killSession(omxTmuxSessionId)
+              } catch {
+                // Best-effort cleanup — tmux session may already be gone
+              }
+            }
             try {
               await window.terminalOps.destroy(sessionId)
             } catch {
