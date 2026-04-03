@@ -30,11 +30,21 @@ export function createSystemOpsAdapter(): SystemOpsApi {
       return data.systemAppPaths
     },
 
-    async detectAgentSdks(): Promise<{ opencode: boolean; claude: boolean; codex: boolean }> {
+    async detectAgentSdks(): Promise<{
+      opencode: boolean
+      claude: boolean
+      codex: boolean
+      omx: boolean
+    }> {
       const data = await graphqlQuery<{
-        systemDetectAgentSdks: { opencode: boolean; claude: boolean; codex: boolean }
+        systemDetectAgentSdks: {
+          opencode: boolean
+          claude: boolean
+          codex: boolean
+          omx: boolean
+        }
       }>(
-        `query { systemDetectAgentSdks { opencode claude codex } }`
+        `query { systemDetectAgentSdks { opencode claude codex omx } }`
       )
       return data.systemDetectAgentSdks
     },

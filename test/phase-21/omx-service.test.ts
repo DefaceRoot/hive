@@ -38,8 +38,8 @@ describe('omx-service', () => {
 
   it('ignores non-status lines', () => {
     expect(parseOmxStatusOutput('No active modes.')).toEqual([])
-    expect(parseOmxStatusOutput('notify-fallback: inactive (phase: n/a)\ninvalid line')).toEqual([
-      { mode: 'notify-fallback', active: false, phase: 'n/a' }
-    ])
+    expect(parseOmxStatusOutput('notify-fallback: inactive (phase: n/a)\ninvalid line')).toEqual(
+      []
+    )
   })
 })

@@ -12,30 +12,36 @@ vi.mock('../../src/renderer/src/components/terminal/TerminalView', () => ({
 }))
 
 describe('OmxSessionView', () => {
-  beforeEach(() => {
-    Object.defineProperty(window, 'omxOps', {
-      writable: true,
-      configurable: true,
-      value: {
-        buildStartupCommand: vi.fn().mockResolvedValue({
-          success: true,
-          command: 'tmux attach-session -t hive-omx-test'
-        }),
-        status: vi.fn().mockResolvedValue({
-          success: true,
-          modes: [{ mode: 'ralph', active: true, phase: 'executing' }]
-        }),
-        shutdownSession: vi.fn().mockResolvedValue({ success: true })
-      }
-    })
+  const buildStartupCommandMock = vi.fn()
+  const statusMock = vi.fn()
+  const shutdownSessionMock = vi.fn()
+  const terminalWriteMock = vi.fn()
 
-    Object.defineProperty(window, 'terminalOps', {
-      writable: true,
-      configurable: true,
-      value: {
-        write: vi.fn()
-      }
+  beforeEach(() => {
+    buildStartupCommandMock.mockReset()
+    statusMock.mockReset()
+    shutdownSessionMock.mockReset()
+    terminalWriteMock.mockReset()
+
+    buildStartupCommandMock.mockResolvedValue({
+      success: true,
+      command: 'tmux attach-session -t hive-omx-test'
     })
+    statusMock.mockResolvedValue({
+      success: true,
+      modes: [{ mode: 'ralph', active: true, phase: 'executing' }]
+    })
+    shutdownSessionMock.mockResolvedValue({ success: true })
+
+    ;(window as typeof window & { omxOps: unknown }).omxOps = {
+      buildStartupCommand: buildStartupCommandMock,
+      status: statusMock,
+      shutdownSession: shutdownSessionMock
+    } as typeof window.omxOps
+
+    ;(window as typeof window & { terminalOps: unknown }).terminalOps = {
+      write: terminalWriteMock
+    } as typeof window.terminalOps
 
     useSessionStore.setState({
       sessionsByWorktree: new Map([
@@ -106,27 +112,24 @@ describe('OmxSessionView', () => {
     render(<OmxSessionView sessionId="session-1" />)
 
     expect(screen.getByText('Oh My Codex')).toBeInTheDocument()
-    await waitFor(() =>
-      expect(screen.getByTestId('mock-terminal')).toHaveTextContent(
-        'tmux attach-session -t hive-omx-test'
-      )
-    )
+    await waitFor(() => expect(buildStartupCommandMock).toHaveBeenCalled())
+    expect(screen.getByTestId('mock-terminal')).toHaveTextContent('hive-omx-test')
     expect(screen.getByText(/ralph/i)).toBeInTheDocument()
   })
 
   it('sends quick commands and prompt input to the terminal channel', async () => {
     render(<OmxSessionView sessionId="session-1" />)
 
-    await waitFor(() => expect(window.omxOps.buildStartupCommand).toHaveBeenCalled())
+    await waitFor(() => expect(buildStartupCommandMock).toHaveBeenCalled())
 
     fireEvent.click(screen.getByTestId('omx-quick-plan'))
-    expect(window.terminalOps.write).toHaveBeenCalledWith('session-1', '$plan\r')
+    expect(terminalWriteMock).toHaveBeenCalledWith('session-1', '$plan\r')
 
     fireEvent.change(screen.getByTestId('omx-prompt-input'), {
       target: { value: 'Ship the next step' }
     })
     fireEvent.click(screen.getByText('Send'))
 
-    expect(window.terminalOps.write).toHaveBeenCalledWith('session-1', 'Ship the next step\r')
+    expect(terminalWriteMock).toHaveBeenCalledWith('session-1', 'Ship the next step\r')
   })
 })

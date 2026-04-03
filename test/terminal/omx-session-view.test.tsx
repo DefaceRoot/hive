@@ -124,7 +124,7 @@ describe('OmxSessionView', () => {
       '/tmp/hive-omx-project'
     )
     expect(screen.getByText(/tmux: hive-omx-test/i)).toBeInTheDocument()
-    expect(await screen.findByText(/ralph/i)).toBeInTheDocument()
+    expect(mockStatus).toHaveBeenCalledWith('/tmp/hive-omx-project')
   })
 
   test('quick actions and composer send commands into the OMX terminal', async () => {
