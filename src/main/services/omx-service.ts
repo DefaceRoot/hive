@@ -16,7 +16,7 @@ const DEFAULT_OMX_LAUNCH_ARGS = ['--madmax', '--high']
 const STATUS_LINE_RE = /^([^:]+):\s+(ACTIVE|inactive)\s+\(phase:\s+([^)]+)\)\s*$/i
 
 function quoteShellArg(value: string): string {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`
+  return `'${value.replace(/'/g, `'"'"'`)}'`
 }
 
 export function buildOmxTmuxSessionName(hiveSessionId: string): string {
@@ -38,6 +38,8 @@ export function buildOmxStartupCommand(options: OmxStartupCommandOptions): strin
   ].join('; ')
 }
 
+export const buildOmxBootstrapCommand = buildOmxStartupCommand
+
 export function parseOmxStatusOutput(output: string): OmxModeStatus[] {
   const trimmed = output.trim()
   if (!trimmed || trimmed === 'No active modes.') {
@@ -52,11 +54,17 @@ export function parseOmxStatusOutput(output: string): OmxModeStatus[] {
       const match = line.match(STATUS_LINE_RE)
       if (!match) return null
 
-      return {
+      const status = {
         mode: match[1].trim(),
         active: match[2].toLowerCase() === 'active',
         phase: match[3].trim()
       } satisfies OmxModeStatus
+
+      if (status.mode === 'notify-fallback' && !status.active) {
+        return null
+      }
+
+      return status
     })
     .filter((value): value is OmxModeStatus => value !== null)
 }

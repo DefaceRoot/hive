@@ -13,13 +13,13 @@ describe('omx-service', () => {
 
   it('builds an attach-or-create bootstrap command', () => {
     const command = buildOmxBootstrapCommand({
-      sessionName: 'hive-omx-session-123',
+      tmuxSessionName: 'hive-omx-session-123',
       cwd: '/tmp/project'
     })
 
     expect(command).toContain('tmux has-session -t')
     expect(command).toContain('tmux new-session -d -s')
-    expect(command).toContain('omx --madmax --high')
+    expect(command).toContain("'omx' '--madmax' '--high'")
     expect(command).toContain('tmux attach-session -t')
     expect(command).toContain('extended-keys on')
   })
