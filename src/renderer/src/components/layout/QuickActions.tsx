@@ -7,6 +7,7 @@ import { useWorktreeStore } from '@/stores/useWorktreeStore'
 import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useSettingsStore, type EditorOption, type TerminalOption } from '@/stores/useSettingsStore'
 import { useProjectStore } from '@/stores/useProjectStore'
+import { getTerminalLabel } from '@/lib/terminal-options'
 
 function CursorIcon({ className }: { className?: string }): React.JSX.Element {
   return (
@@ -279,18 +280,6 @@ const EDITOR_LABELS: Record<EditorOption, string> = {
   custom: 'Editor'
 }
 
-const TERMINAL_LABELS: Record<TerminalOption, string> = {
-  terminal: 'Terminal',
-  iterm: 'iTerm',
-  warp: 'Warp',
-  alacritty: 'Alacritty',
-  kitty: 'Kitty',
-  ghostty: 'Ghostty',
-  powershell: 'PowerShell',
-  cmd: 'CMD',
-  custom: 'Terminal'
-}
-
 function TerminalIcon({
   terminal,
   className
@@ -384,7 +373,7 @@ export function QuickActions(): React.JSX.Element | null {
   }, [isKotlinOrJava, activePath, selectedProject?.path, isConnectionMode])
 
   const editorLabel = EDITOR_LABELS[defaultEditor]
-  const terminalLabel = TERMINAL_LABELS[defaultTerminal]
+  const terminalLabel = getTerminalLabel(defaultTerminal)
 
   const handleOpenInEditor = useCallback(async () => {
     if (!activePath) return

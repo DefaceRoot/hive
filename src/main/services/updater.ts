@@ -31,6 +31,10 @@ let isManualCheck = false
 let checkInterval: ReturnType<typeof setInterval> | null = null
 let initialTimeout: ReturnType<typeof setTimeout> | null = null
 
+function isUpdaterSupported(): boolean {
+  return app.isPackaged && process.platform !== 'linux'
+}
+
 function safeSend(win: BrowserWindow, channel: string, data?: unknown): void {
   if (!win.isDestroyed()) {
     win.webContents.send(channel, data)
@@ -41,6 +45,11 @@ export const updaterService = {
   init(mainWindow: BrowserWindow): void {
     if (!app.isPackaged) {
       log.debug('Skipping auto-updater in development mode')
+      return
+    }
+
+    if (!isUpdaterSupported()) {
+      log.info('Skipping auto-updater on unsupported platform', { platform: process.platform })
       return
     }
 
@@ -112,6 +121,7 @@ export const updaterService = {
   },
 
   async checkForUpdates(options?: { manual?: boolean }): Promise<void> {
+    if (!isUpdaterSupported()) return
     try {
       isManualCheck = options?.manual ?? false
       await autoUpdater.checkForUpdates()
@@ -124,6 +134,7 @@ export const updaterService = {
   },
 
   async downloadUpdate(): Promise<void> {
+    if (!isUpdaterSupported()) return
     try {
       await autoUpdater.downloadUpdate()
     } catch (error) {
@@ -135,6 +146,7 @@ export const updaterService = {
   },
 
   quitAndInstall(): void {
+    if (!isUpdaterSupported()) return
     autoUpdater.quitAndInstall()
   },
 
@@ -150,6 +162,7 @@ export const updaterService = {
   },
 
   setChannel(channel: 'stable' | 'canary'): void {
+    if (!isUpdaterSupported()) return
     autoUpdater.channel = channel === 'canary' ? 'canary' : 'latest'
     autoUpdater.allowPrerelease = channel === 'canary'
     autoUpdater.allowDowngrade = true // allow downgrade on explicit channel switch
@@ -159,5 +172,9 @@ export const updaterService = {
 
   getVersion(): string {
     return app.getVersion()
+  },
+
+  isSupported(): boolean {
+    return isUpdaterSupported()
   }
 }

@@ -538,7 +538,12 @@ declare global {
       }) => Promise<void>
       onMenuAction: (channel: string, callback: () => void) => () => void
       isPackaged: () => Promise<boolean>
-      installServerToPath: () => Promise<{ success: boolean; path?: string; error?: string }>
+      installServerToPath: () => Promise<{
+        success: boolean
+        path?: string
+        error?: string
+        warning?: string
+      }>
       uninstallServerFromPath: () => Promise<{ success: boolean; error?: string }>
       getPlatform: () => Promise<string>
     }

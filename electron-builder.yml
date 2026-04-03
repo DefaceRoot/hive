@@ -5,6 +5,7 @@ directories:
   output: dist
 files:
   - out/**/*
+  - src/server/schema/**/*
   - resources/**/*
 
 # Native .node binaries cannot be loaded from inside an ASAR archive.
@@ -61,6 +62,7 @@ nsis:
 linux:
   icon: resources/icon.png
   category: Development
+  maintainer: morapelker
   target:
     - target: AppImage
       arch:

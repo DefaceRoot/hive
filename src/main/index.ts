@@ -1,9 +1,9 @@
 import { loadShellEnv } from './services/shell-env'
 import { app, shell, BrowserWindow, screen, ipcMain, clipboard } from 'electron'
-import { join } from 'path'
-import { spawn, exec } from 'child_process'
+import { dirname, join } from 'path'
+import { exec, execFileSync } from 'child_process'
 import { promisify } from 'util'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, accessSync, constants } from 'fs'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { getDatabase, closeDatabase } from './db'
 import {
@@ -43,19 +43,27 @@ import type { AgentSdkImplementer } from './services/agent-sdk-types'
 import { telemetryService } from './services/telemetry-service'
 import { registerTicketImportHandlers } from './ipc/ticket-import-handlers'
 import { initTicketProviderManager, GitHubProvider, JiraProvider } from './services/ticket-providers'
+import { detectEditors, detectTerminals } from './services/settings-detection'
+import { spawnDetached } from './services/spawn-detached'
+import { getCliArgs, getFlagValue, getNumericFlagValue } from './services/cli-args'
+import {
+  buildHiveServerScript,
+  chooseLinuxInstallTarget,
+  getLinuxUninstallCandidates,
+  getUserHiveServerPath,
+  SYSTEM_HIVE_SERVER_PATH
+} from './services/hive-server-path'
 
 const log = createLogger({ component: 'Main' })
 
 const appStartTime = Date.now()
 
 // Parse CLI flags
-const cliArgs = process.argv.slice(2)
+const cliArgs = getCliArgs(process.argv, { isPackaged: app.isPackaged })
 const isLogMode = cliArgs.includes('--log')
 const isHeadless = cliArgs.includes('--headless')
-const headlessPort = cliArgs.includes('--port')
-  ? parseInt(cliArgs[cliArgs.indexOf('--port') + 1])
-  : undefined
-const headlessBind = cliArgs.includes('--bind') ? cliArgs[cliArgs.indexOf('--bind') + 1] : undefined
+const headlessPort = getNumericFlagValue(cliArgs, '--port', { min: 1, max: 65535 })
+const headlessBind = getFlagValue(cliArgs, '--bind')
 const isRotateKey = cliArgs.includes('--rotate-key')
 const isRegenCerts = cliArgs.includes('--regen-certs')
 const isShowStatus = cliArgs.includes('--show-status')
@@ -119,8 +127,33 @@ function saveWindowBounds(window: BrowserWindow): void {
 
 let mainWindow: BrowserWindow | null = null
 
+function canWriteParentDir(targetPath: string): boolean {
+  try {
+    accessSync(dirname(targetPath), constants.W_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasCommand(command: string): boolean {
+  try {
+    execFileSync(process.platform === 'win32' ? 'where' : 'which', [command], {
+      stdio: 'ignore'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function createWindow(): void {
   const savedBounds = loadWindowBounds()
+  log.info('Creating main window', {
+    platform: process.platform,
+    savedBounds,
+    initialShow: process.platform === 'linux'
+  })
 
   mainWindow = new BrowserWindow({
     width: savedBounds?.width ?? 1200,
@@ -129,7 +162,7 @@ function createWindow(): void {
     y: savedBounds?.y,
     minWidth: 800,
     minHeight: 600,
-    show: false,
+    show: process.platform === 'linux',
     autoHideMenuBar: true,
     ...(process.platform === 'darwin'
       ? {
@@ -150,8 +183,19 @@ function createWindow(): void {
     mainWindow.maximize()
   }
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+  if (!mainWindow.isVisible()) {
+    mainWindow.on('ready-to-show', () => {
+      log.info('Main window ready-to-show fired')
+      mainWindow.show()
+    })
+  }
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    log.info('Main window did-finish-load', { visible: mainWindow?.isVisible() })
+  })
+
+  mainWindow.on('show', () => {
+    log.info('Main window show event', { visible: mainWindow?.isVisible() })
   })
 
   // Emit focus event to renderer for git refresh on window focus
@@ -286,14 +330,15 @@ function registerSystemHandlers(): void {
       switch (appName) {
         case 'cursor':
           if (process.platform === 'darwin') {
-            spawn('open', ['-a', 'Cursor', path], { detached: true, stdio: 'ignore' })
+            await spawnDetached('open', ['-a', 'Cursor', path])
           } else if (process.platform === 'win32') {
-            spawn('cmd', ['/c', 'start', '', 'cursor', path], {
-              detached: true,
-              stdio: 'ignore'
-            })
+            await spawnDetached('cmd', ['/c', 'start', '', 'cursor', path])
           } else {
-            spawn('cursor', [path], { detached: true, stdio: 'ignore' })
+            const cursor = detectEditors().find((editor) => editor.id === 'cursor')
+            if (!cursor?.available) {
+              return { success: false, error: 'Cursor is not installed' }
+            }
+            await spawnDetached(cursor.command, [path])
           }
           break
         case 'ghostty':
@@ -301,21 +346,28 @@ function registerSystemHandlers(): void {
             return { success: false, error: 'Ghostty is not available on Windows' }
           }
           if (process.platform === 'darwin') {
-            spawn('open', ['-a', 'Ghostty', path], { detached: true, stdio: 'ignore' })
+            await spawnDetached('open', ['-a', 'Ghostty', path])
           } else {
-            spawn('ghostty', ['--working-directory=' + path], { detached: true, stdio: 'ignore' })
+            const ghostty = detectTerminals().find((terminal) => terminal.id === 'ghostty')
+            if (!ghostty?.available) {
+              return { success: false, error: 'Ghostty is not installed' }
+            }
+            await spawnDetached(ghostty.command, ['--working-directory=' + path])
           }
           break
         case 'android-studio':
           if (process.platform === 'darwin') {
-            spawn('open', ['-a', 'Android Studio', path], { detached: true, stdio: 'ignore' })
+            await spawnDetached('open', ['-a', 'Android Studio', path])
           } else if (process.platform === 'win32') {
-            spawn('cmd', ['/c', 'start', '', 'studio64.exe', path], {
-              detached: true,
-              stdio: 'ignore'
-            })
+            await spawnDetached('cmd', ['/c', 'start', '', 'studio64.exe', path])
           } else {
-            spawn('studio', [path], { detached: true, stdio: 'ignore' })
+            const studioCommand = ['studio', 'android-studio'].find((candidate) =>
+              hasCommand(candidate)
+            )
+            if (!studioCommand) {
+              return { success: false, error: 'Android Studio is not installed' }
+            }
+            await spawnDetached(studioCommand, [path])
           }
           break
         case 'copy-path':
@@ -357,6 +409,7 @@ function registerSystemHandlers(): void {
   ipcMain.handle('system:installServerToPath', async () => {
     const execAsync = promisify(exec)
     const execPath = process.execPath
+    const scriptContent = buildHiveServerScript(execPath)
 
     if (process.platform === 'win32') {
       try {
@@ -378,32 +431,74 @@ function registerSystemHandlers(): void {
       }
     }
 
-    // macOS / Linux
-    const targetPath = '/usr/local/bin/hive-server'
-    try {
-      const scriptContent =
-        [
-          '#!/bin/bash',
-          '# hive-server — Hive headless mode launcher',
-          '# Installed by Hive.app',
-          `exec "${execPath}" --headless "$@"`
-        ].join('\n') + '\n'
-
-      // Write to a temp file first (no admin needed), then move with elevation
-      const tmpPath = join(app.getPath('temp'), 'hive-server-install')
-      writeFileSync(tmpPath, scriptContent, { mode: 0o755 })
-
-      if (process.platform === 'darwin') {
+    if (process.platform === 'darwin') {
+      const targetPath = SYSTEM_HIVE_SERVER_PATH
+      try {
+        const tmpPath = join(app.getPath('temp'), 'hive-server-install')
+        writeFileSync(tmpPath, scriptContent, { mode: 0o755 })
         const osascript = `do shell script "mv '${tmpPath}' '${targetPath}' && chmod +x '${targetPath}'" with administrator privileges`
         await execAsync(`osascript -e '${osascript}'`, { timeout: 30000 })
+        return { success: true, path: targetPath }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (
+          message.includes('User canceled') ||
+          message.includes('-128') ||
+          message.includes('Not authorized')
+        ) {
+          return { success: false, error: 'Installation cancelled' }
+        }
+        return { success: false, error: message }
+      }
+    }
+
+    // Linux
+    try {
+      const installPlan = chooseLinuxInstallTarget({
+        canWriteSystemPath: canWriteParentDir(SYSTEM_HIVE_SERVER_PATH),
+        hasPkexec: hasCommand('pkexec'),
+        homeDir: app.getPath('home')
+      })
+
+      if (installPlan.requiresPrivilege) {
+        const tmpPath = join(app.getPath('temp'), 'hive-server-install')
+        writeFileSync(tmpPath, scriptContent, { mode: 0o755 })
+        try {
+          await execAsync(
+            `pkexec sh -c "mv '${tmpPath}' '${installPlan.targetPath}' && chmod +x '${installPlan.targetPath}'"`,
+            { timeout: 30000 }
+          )
+        } catch {
+          const fallbackPath = getUserHiveServerPath(app.getPath('home'))
+          mkdirSync(dirname(fallbackPath), { recursive: true })
+          writeFileSync(fallbackPath, scriptContent, { mode: 0o755 })
+          return {
+            success: true,
+            path: fallbackPath,
+            warning: `Could not install to ${installPlan.targetPath}; installed to ${fallbackPath} instead. Add ${dirname(fallbackPath)} to PATH to use hive-server globally.`
+          }
+        }
       } else {
-        await execAsync(`pkexec sh -c "mv '${tmpPath}' '${targetPath}' && chmod +x '${targetPath}'"`, { timeout: 30000 })
+        mkdirSync(dirname(installPlan.targetPath), { recursive: true })
+        writeFileSync(installPlan.targetPath, scriptContent, { mode: 0o755 })
       }
 
-      return { success: true, path: targetPath }
+      if (installPlan.targetPath === getUserHiveServerPath(app.getPath('home'))) {
+        const userBinDir = dirname(installPlan.targetPath)
+        const pathEntries = (process.env.PATH || '').split(':')
+        if (!pathEntries.includes(userBinDir)) {
+          return {
+            success: true,
+            path: installPlan.targetPath,
+            warning: `Add ${userBinDir} to PATH to use hive-server globally.`
+          }
+        }
+      }
+
+      return { success: true, path: installPlan.targetPath }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (message.includes('User canceled') || message.includes('-128') || message.includes('Not authorized')) {
+      if (message.includes('User canceled') || message.includes('Not authorized')) {
         return { success: false, error: 'Installation cancelled' }
       }
       return { success: false, error: message }
@@ -436,24 +531,71 @@ function registerSystemHandlers(): void {
       }
     }
 
-    // macOS / Linux
-    const targetPath = '/usr/local/bin/hive-server'
+    if (process.platform === 'darwin') {
+      const targetPath = SYSTEM_HIVE_SERVER_PATH
+      try {
+        if (!existsSync(targetPath)) {
+          return { success: false, error: 'hive-server is not installed' }
+        }
+
+        const osascript = `do shell script "rm '${targetPath}'" with administrator privileges`
+        await execAsync(`osascript -e '${osascript}'`, { timeout: 30000 })
+        return { success: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (
+          message.includes('User canceled') ||
+          message.includes('-128') ||
+          message.includes('Not authorized')
+        ) {
+          return { success: false, error: 'Uninstall cancelled' }
+        }
+        return { success: false, error: message }
+      }
+    }
+
+    // Linux
     try {
-      if (!existsSync(targetPath)) {
+      const installedPaths = getLinuxUninstallCandidates(app.getPath('home')).filter((candidate) =>
+        existsSync(candidate)
+      )
+      const errors: string[] = []
+      if (installedPaths.length === 0) {
         return { success: false, error: 'hive-server is not installed' }
       }
 
-      if (process.platform === 'darwin') {
-        const osascript = `do shell script "rm '${targetPath}'" with administrator privileges`
-        await execAsync(`osascript -e '${osascript}'`, { timeout: 30000 })
-      } else {
-        await execAsync(`pkexec rm '${targetPath}'`, { timeout: 30000 })
+      for (const installedPath of installedPaths) {
+        if (installedPath === SYSTEM_HIVE_SERVER_PATH && !canWriteParentDir(installedPath)) {
+          if (!hasCommand('pkexec')) {
+            errors.push(`Cannot remove ${installedPath} automatically because pkexec is unavailable`)
+            continue
+          }
+          try {
+            await execAsync(`pkexec rm '${installedPath}'`, { timeout: 30000 })
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            if (!message.includes('No such file or directory')) {
+              errors.push(message)
+            }
+          }
+        } else {
+          try {
+            unlinkSync(installedPath)
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            errors.push(message)
+          }
+        }
+      }
+
+      if (errors.length > 0) {
+        return { success: false, error: errors.join('; ') }
       }
 
       return { success: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (message.includes('User canceled') || message.includes('-128') || message.includes('Not authorized')) {
+      if (message.includes('User canceled') || message.includes('Not authorized')) {
         return { success: false, error: 'Uninstall cancelled' }
       }
       return { success: false, error: message }

@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process'
 import { createLogger } from './logger'
+import { resolveDefaultShell } from './shell-path'
 
 const log = createLogger({ component: 'ShellEnv' })
 
@@ -18,7 +19,7 @@ const log = createLogger({ component: 'ShellEnv' })
 export function loadShellEnv(): void {
   if (process.platform === 'win32') return
 
-  const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
+  const shell = resolveDefaultShell()
 
   try {
     // Use null-delimited output (`env -0`) to safely handle values that

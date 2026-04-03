@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { RefreshCw } from 'lucide-react'
+import { isLinux } from '@/lib/platform'
 
 export function SettingsUpdates(): React.JSX.Element {
   const isWebMode = useIsWebMode()
@@ -37,6 +38,26 @@ export function SettingsUpdates(): React.JSX.Element {
             Updates are managed by your server administrator
           </p>
         </div>
+      </div>
+    )
+  }
+
+  if (isLinux()) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-base font-medium mb-1">Updates</h3>
+          <p className="text-sm text-muted-foreground">
+            Automatic updates are currently unavailable on Linux. Install a newer AppImage or
+            package from GitHub Releases when a new version is published.
+          </p>
+        </div>
+
+        {version && (
+          <div className="text-sm text-muted-foreground">
+            Current version: <span className="font-mono text-foreground">{version}</span>
+          </div>
+        )}
       </div>
     )
   }

@@ -1,12 +1,12 @@
 import { ipcMain } from 'electron'
 import { existsSync } from 'fs'
-import { spawn } from 'child_process'
 import { platform } from 'os'
 import { createLogger } from '../services'
 import { telemetryService } from '../services/telemetry-service'
 import { getDatabase } from '../db'
 import { detectEditors, detectTerminals, type DetectedApp } from '../services/settings-detection'
 import { APP_SETTINGS_DB_KEY } from '@shared/types/settings'
+import { spawnDetached } from '../services/spawn-detached'
 
 const log = createLogger({ component: 'SettingsHandlers' })
 
@@ -25,105 +25,101 @@ function resolveEditorCommand(
   return { command: editor.command }
 }
 
-/** Fire-and-forget spawn: suppress errors and fully detach from parent event loop. */
-function spawnDetached(...args: Parameters<typeof spawn>): void {
-  const child = spawn(...args)
-  child.on('error', () => {})
-  child.unref()
-}
-
 /**
  * Launch a terminal at the given path using the specified terminal ID.
  * Contains all platform-specific terminal launch logic in one place.
  */
-function launchTerminal(
+async function launchTerminal(
   targetPath: string,
   terminalId: string,
   customCommand?: string
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   const currentPlatform = platform()
 
   if (terminalId === 'custom' && customCommand) {
-    spawnDetached(customCommand, [targetPath], { detached: true, stdio: 'ignore' })
-    return { success: true }
+    try {
+      await spawnDetached(customCommand, [targetPath], { cwd: targetPath })
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Terminal not found' }
+    }
   }
 
-  if (currentPlatform === 'darwin') {
-    switch (terminalId) {
-      case 'terminal':
-        spawnDetached('open', ['-a', 'Terminal', targetPath], { detached: true })
-        break
-      case 'iterm':
-        spawnDetached('open', ['-a', 'iTerm', targetPath], { detached: true })
-        break
-      case 'warp':
-        spawnDetached('open', ['-a', 'Warp', targetPath], { detached: true })
-        break
-      case 'alacritty':
-        spawnDetached('alacritty', ['--working-directory', targetPath], {
-          detached: true,
-          stdio: 'ignore'
-        })
-        break
-      case 'kitty':
-        spawnDetached('kitty', ['--directory', targetPath], { detached: true, stdio: 'ignore' })
-        break
-      case 'ghostty':
-        spawnDetached('open', ['-a', 'Ghostty', targetPath], { detached: true })
-        break
-      default:
-        spawnDetached('open', ['-a', 'Terminal', targetPath], { detached: true })
-    }
-  } else if (currentPlatform === 'win32') {
-    switch (terminalId) {
-      case 'terminal': {
-        // Windows Terminal may not be installed; fall back to PowerShell
-        const terminals = detectTerminals()
-        const wt = terminals.find((t) => t.id === 'terminal')
-        if (wt?.available) {
-          spawnDetached('wt.exe', ['-d', targetPath], { detached: true, stdio: 'ignore' })
-        } else {
-          spawnDetached('powershell.exe', ['-NoExit', '-Command', `Set-Location '${targetPath.replace(/'/g, "''")}'`], {
-            detached: true,
-            stdio: 'ignore'
-          })
-        }
-        break
+  try {
+    if (currentPlatform === 'darwin') {
+      switch (terminalId) {
+        case 'terminal':
+          await spawnDetached('open', ['-a', 'Terminal', targetPath])
+          break
+        case 'iterm':
+          await spawnDetached('open', ['-a', 'iTerm', targetPath])
+          break
+        case 'warp':
+          await spawnDetached('open', ['-a', 'Warp', targetPath])
+          break
+        case 'alacritty':
+          await spawnDetached('alacritty', ['--working-directory', targetPath])
+          break
+        case 'kitty':
+          await spawnDetached('kitty', ['--directory', targetPath])
+          break
+        case 'ghostty':
+          await spawnDetached('open', ['-a', 'Ghostty', targetPath])
+          break
+        default:
+          await spawnDetached('open', ['-a', 'Terminal', targetPath])
       }
-      case 'powershell':
-        spawnDetached('powershell.exe', ['-NoExit', '-Command', `Set-Location '${targetPath.replace(/'/g, "''")}'`], {
-          detached: true,
-          stdio: 'ignore'
-        })
-        break
-      case 'cmd':
-        spawnDetached('cmd.exe', ['/k', `cd /d "${targetPath}"`], {
-          detached: true,
-          stdio: 'ignore'
-        })
-        break
-      default: {
-        const terminals = detectTerminals()
-        const terminal = terminals.find((t) => t.id === terminalId)
-        if (terminal?.available) {
-          spawnDetached(terminal.command, [], { cwd: targetPath, detached: true, stdio: 'ignore' })
-        } else {
-          return { success: false, error: 'Terminal not found' }
+    } else if (currentPlatform === 'win32') {
+      switch (terminalId) {
+        case 'terminal': {
+          // Windows Terminal may not be installed; fall back to PowerShell
+          const terminals = detectTerminals()
+          const wt = terminals.find((t) => t.id === 'terminal')
+          if (wt?.available) {
+            await spawnDetached('wt.exe', ['-d', targetPath])
+          } else {
+            await spawnDetached('powershell.exe', [
+              '-NoExit',
+              '-Command',
+              `Set-Location '${targetPath.replace(/'/g, "''")}'`
+            ])
+          }
+          break
+        }
+        case 'powershell':
+          await spawnDetached('powershell.exe', [
+            '-NoExit',
+            '-Command',
+            `Set-Location '${targetPath.replace(/'/g, "''")}'`
+          ])
+          break
+        case 'cmd':
+          await spawnDetached('cmd.exe', ['/k', `cd /d "${targetPath}"`])
+          break
+        default: {
+          const terminals = detectTerminals()
+          const terminal = terminals.find((t) => t.id === terminalId)
+          if (!terminal?.available) {
+            return { success: false, error: 'Terminal not found' }
+          }
+          await spawnDetached(terminal.command, [], { cwd: targetPath })
         }
       }
-    }
-  } else {
-    // Fallback for Linux and other platforms
-    const terminals = detectTerminals()
-    const terminal = terminals.find((t) => t.id === terminalId)
-    if (terminal?.available) {
-      spawnDetached(terminal.command, [], { cwd: targetPath, detached: true, stdio: 'ignore' })
     } else {
-      return { success: false, error: 'Terminal not found' }
+      const terminals = detectTerminals()
+      const terminal =
+        terminals.find((t) => t.id === terminalId && t.available) ??
+        (terminalId === 'terminal' ? terminals.find((t) => t.available) : undefined)
+      if (!terminal?.available) {
+        return { success: false, error: 'Terminal not found' }
+      }
+      await spawnDetached(terminal.command, [], { cwd: targetPath })
     }
-  }
 
-  return { success: true }
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to launch terminal' }
+  }
 }
 
 /**
@@ -152,13 +148,12 @@ export function openPathWithPreferredEditor(
   if ('error' in resolved) {
     return Promise.resolve({ success: false, error: resolved.error })
   }
-  try {
-    spawn(resolved.command, [path], { detached: true, stdio: 'ignore' })
-    return Promise.resolve({ success: true })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return Promise.resolve({ success: false, error: message })
-  }
+  return spawnDetached(resolved.command, [path])
+    .then(() => ({ success: true }))
+    .catch((error) => ({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }))
 }
 
 /**
@@ -184,7 +179,7 @@ export function openPathWithPreferredTerminal(
     // Use defaults
   }
   try {
-    return Promise.resolve(launchTerminal(path, terminalId, customCommand || undefined))
+    return launchTerminal(path, terminalId, customCommand || undefined)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return Promise.resolve({ success: false, error: message })
@@ -238,7 +233,7 @@ export function registerSettingsHandlers(): void {
           return { success: false, error: resolved.error }
         }
 
-        spawn(resolved.command, [worktreePath], { detached: true, stdio: 'ignore' })
+        await spawnDetached(resolved.command, [worktreePath])
         telemetryService.track('worktree_opened_in_editor')
         return { success: true }
       } catch (error) {
@@ -261,7 +256,7 @@ export function registerSettingsHandlers(): void {
         if (!existsSync(worktreePath)) {
           return { success: false, error: 'Path does not exist' }
         }
-        return launchTerminal(worktreePath, terminalId, customCommand)
+        return await launchTerminal(worktreePath, terminalId, customCommand)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return { success: false, error: message }

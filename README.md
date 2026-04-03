@@ -9,7 +9,7 @@
     <a href="https://github.com/morapelker/hive/releases/latest"><img src="https://img.shields.io/github/v/release/morapelker/hive?style=flat-square&logo=github&label=version" alt="Latest Release" /></a>
     <a href="https://github.com/morapelker/hive/releases"><img src="https://img.shields.io/github/downloads/morapelker/hive/total?style=flat-square&logo=github" alt="Downloads" /></a>
     <a href="https://github.com/morapelker/hive/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/morapelker/hive/release.yml?style=flat-square&logo=github-actions&label=build" alt="Build Status" /></a>
-    <a href="#"><img src="https://img.shields.io/badge/macOS-only-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS" /></a>
+    <a href="#"><img src="https://img.shields.io/badge/macOS%20%2B%20Linux-supported-2ea043?style=flat-square&logo=linux&logoColor=white" alt="macOS and Linux" /></a>
     <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" /></a>
     <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/electron-33-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" /></a>
     <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/typescript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /></a>
@@ -94,7 +94,7 @@ See how Hive transforms your git workflow:
 
 ## Installation
 
-> 🍎 **macOS only** — Windows and Linux support coming soon.
+> 🍎🐧 **macOS and Linux supported** — Windows support is still in progress.
 
 ### Via Homebrew (Recommended)
 
@@ -105,7 +105,7 @@ brew install --cask hive
 
 ### Direct Download
 
-Download the latest `.dmg` from [GitHub Releases](https://github.com/morapelker/hive/releases/latest).
+Download the latest `.dmg`, `.AppImage`, or `.deb` from [GitHub Releases](https://github.com/morapelker/hive/releases/latest).
 
 That's it! Open Hive from your Applications folder and point it at a git repo.
 
@@ -304,6 +304,7 @@ If `libghostty` is not available, Hive still builds and runs -- the Ghostty term
 | `pnpm test:watch` | Watch mode            |
 | `pnpm test:e2e`   | Playwright E2E tests  |
 | `pnpm build:mac`  | Package for macOS     |
+| `pnpm build:linux`| Package for Linux     |
 
 ### Architecture
 

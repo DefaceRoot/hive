@@ -16,7 +16,7 @@ import { useShortcutStore } from '@/stores/useShortcutStore'
 import { useCommandPaletteStore, type Command } from '@/stores/useCommandPaletteStore'
 import { commandRegistry, fuzzySearch } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
-import { revealLabel, isWindows, fileManagerName } from '@/lib/platform'
+import { revealLabel, isLinux, isWindows, fileManagerName } from '@/lib/platform'
 
 /**
  * Hook that registers all available commands and returns filtered commands
@@ -596,7 +596,9 @@ export function useCommands() {
         label: "Install 'hive-server' Command in PATH",
         description: isWindows()
           ? 'Install the hive-server CLI to %LOCALAPPDATA%\\Hive'
-          : 'Install the hive-server CLI to /usr/local/bin',
+          : isLinux()
+            ? 'Install the hive-server CLI to /usr/local/bin or ~/.local/bin'
+            : 'Install the hive-server CLI to /usr/local/bin',
         category: 'action',
         icon: 'Terminal',
         keywords: ['install', 'server', 'path', 'headless', 'cli', 'terminal'],
@@ -605,7 +607,11 @@ export function useCommands() {
           try {
             const result = await window.systemOps.installServerToPath()
             if (result.success) {
-              toast.success(`Installed hive-server to ${result.path}`)
+              toast.success(
+                result.warning
+                  ? `Installed hive-server to ${result.path}. ${result.warning}`
+                  : `Installed hive-server to ${result.path}`
+              )
             } else {
               toast.error(result.error || 'Failed to install')
             }
@@ -620,7 +626,9 @@ export function useCommands() {
         label: "Uninstall 'hive-server' Command from PATH",
         description: isWindows()
           ? 'Remove the hive-server CLI from %LOCALAPPDATA%\\Hive'
-          : 'Remove the hive-server CLI from /usr/local/bin',
+          : isLinux()
+            ? 'Remove the hive-server CLI from /usr/local/bin or ~/.local/bin'
+            : 'Remove the hive-server CLI from /usr/local/bin',
         category: 'action',
         icon: 'Trash2',
         keywords: ['uninstall', 'remove', 'server', 'path', 'cli'],

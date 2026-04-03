@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useIsWebMode } from '@/hooks/useIsWebMode'
-import { isMac as isMacPlatform, isWindows as isWindowsPlatform } from '@/lib/platform'
+import { isLinux, isMac as isMacPlatform, isWindows as isWindowsPlatform } from '@/lib/platform'
 import {
   useSettingsStore,
-  type TerminalOption,
   type EmbeddedTerminalBackend
 } from '@/stores/useSettingsStore'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Check, Loader2, Info } from 'lucide-react'
+import { getTerminalOptionsForPlatform } from '@/lib/terminal-options'
 
 interface DetectedTerminal {
   id: string
@@ -17,34 +17,10 @@ interface DetectedTerminal {
   available: boolean
 }
 
-const MAC_TERMINAL_OPTIONS: { id: TerminalOption; label: string }[] = [
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'iterm', label: 'iTerm2' },
-  { id: 'warp', label: 'Warp' },
-  { id: 'alacritty', label: 'Alacritty' },
-  { id: 'kitty', label: 'kitty' },
-  { id: 'ghostty', label: 'Ghostty' },
-  { id: 'custom', label: 'Custom Command' }
-]
-
-const WINDOWS_TERMINAL_OPTIONS: { id: TerminalOption; label: string }[] = [
-  { id: 'terminal', label: 'Windows Terminal' },
-  { id: 'powershell', label: 'PowerShell' },
-  { id: 'cmd', label: 'Command Prompt' },
-  { id: 'custom', label: 'Custom Command' }
-]
-
-const LINUX_TERMINAL_OPTIONS: { id: TerminalOption; label: string }[] = [
-  { id: 'terminal', label: 'Default Terminal' },
-  { id: 'alacritty', label: 'Alacritty' },
-  { id: 'kitty', label: 'kitty' },
-  { id: 'custom', label: 'Custom Command' }
-]
-
-function getTerminalOptions(): { id: TerminalOption; label: string }[] {
-  if (isWindowsPlatform()) return WINDOWS_TERMINAL_OPTIONS
-  if (isMacPlatform()) return MAC_TERMINAL_OPTIONS
-  return LINUX_TERMINAL_OPTIONS
+function getTerminalOptions() {
+  return getTerminalOptionsForPlatform(
+    isWindowsPlatform() ? 'win32' : isMacPlatform() ? 'darwin' : 'linux'
+  )
 }
 
 const BACKEND_OPTIONS: {
@@ -127,6 +103,9 @@ export function SettingsTerminal(): React.JSX.Element {
 
   const isAvailable = (id: string): boolean => {
     if (id === 'custom') return true
+    if (id === 'terminal' && isLinux()) {
+      return detectedTerminals.some((terminal) => terminal.available)
+    }
     const terminal = detectedTerminals.find((t) => t.id === id)
     return terminal?.available ?? false
   }
@@ -277,7 +256,13 @@ export function SettingsTerminal(): React.JSX.Element {
             <Input
               value={customTerminalCommand}
               onChange={(e) => updateSetting('customTerminalCommand', e.target.value)}
-              placeholder={isMacPlatform() ? 'e.g., /usr/local/bin/alacritty' : 'e.g., C:\\Program Files\\Alacritty\\alacritty.exe'}
+              placeholder={
+                isMacPlatform()
+                  ? 'e.g., /usr/local/bin/alacritty'
+                  : isWindowsPlatform()
+                    ? 'e.g., C:\\Program Files\\Alacritty\\alacritty.exe'
+                    : 'e.g., /usr/bin/wezterm'
+              }
               className="font-mono text-sm"
               data-testid="custom-terminal-command"
             />

@@ -269,7 +269,8 @@ export function buildMenu(mainWindow: BrowserWindow, isDev: boolean): Menu {
       submenu: [
         {
           id: 'check-for-updates',
-          label: 'Check for Updates...',
+          label: process.platform === 'linux' ? 'Updates Unavailable on Linux' : 'Check for Updates...',
+          enabled: process.platform !== 'linux',
           click: () => {
             updaterService.checkForUpdates({ manual: true })
           }

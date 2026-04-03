@@ -144,7 +144,12 @@ export function createSystemOpsAdapter(): SystemOpsApi {
       // no-op in web mode
     },
 
-    async installServerToPath(): Promise<{ success: boolean; path?: string; error?: string }> {
+    async installServerToPath(): Promise<{
+      success: boolean
+      path?: string
+      error?: string
+      warning?: string
+    }> {
       return { success: false, error: 'installServerToPath is not available in web mode' }
     },
 
