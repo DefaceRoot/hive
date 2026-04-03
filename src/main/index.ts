@@ -26,7 +26,8 @@ import {
   registerUpdaterHandlers,
   registerConnectionHandlers,
   registerUsageHandlers,
-  registerKanbanHandlers
+  registerKanbanHandlers,
+  registerOmxHandlers
 } from './ipc'
 import { buildMenu, updateMenuState } from './menu'
 import type { MenuState } from './menu'
@@ -776,6 +777,8 @@ app.whenReady().then(async () => {
     registerScriptHandlers(mainWindow)
     log.info('Registering Terminal handlers')
     registerTerminalHandlers(mainWindow)
+    log.info('Registering OMX handlers')
+    registerOmxHandlers()
 
     // Set up notification service with main window reference
     notificationService.setMainWindow(mainWindow)

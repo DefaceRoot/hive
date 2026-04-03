@@ -4,10 +4,14 @@ import { Info } from 'lucide-react'
 
 export function SettingsModels(): React.JSX.Element {
   const defaultAgentSdk = useSettingsStore((s) => s.defaultAgentSdk) ?? 'opencode'
+  const usesOmx = defaultAgentSdk === 'omx'
   const supportsModes = defaultAgentSdk === 'claude-code' || defaultAgentSdk === 'codex'
   // Show the effective model for the current SDK (what new sessions will actually use)
   const effectiveModel = useSettingsStore((s) =>
-    resolveModelForSdk(defaultAgentSdk === 'terminal' ? 'opencode' : defaultAgentSdk, s)
+    resolveModelForSdk(
+      defaultAgentSdk === 'terminal' || defaultAgentSdk === 'omx' ? 'opencode' : defaultAgentSdk,
+      s
+    )
   )
   const defaultModels = useSettingsStore((state) => state.defaultModels)
   const setSelectedModel = useSettingsStore((state) => state.setSelectedModel)
@@ -22,6 +26,19 @@ export function SettingsModels(): React.JSX.Element {
           Configure which AI models to use for different modes and commands
         </p>
       </div>
+
+      {usesOmx && (
+        <div className="flex gap-2 p-3 rounded-md bg-muted/30 border border-border">
+          <Info className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>OMX sessions launch through `omx --madmax --high` in tmux.</p>
+            <p>
+              Model and reasoning selection are managed by OMX/Codex inside the session, so Hive
+              does not expose default model pickers for OMX.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Info box explaining priority */}
       <div className="flex gap-2 p-3 rounded-md bg-muted/30 border border-border">
@@ -39,6 +56,8 @@ export function SettingsModels(): React.JSX.Element {
         </div>
       </div>
 
+      {!usesOmx && (
+        <>
       {/* Global default */}
       <div className="space-y-2">
         <label className="text-sm font-medium">Global Default Model</label>
@@ -142,6 +161,8 @@ export function SettingsModels(): React.JSX.Element {
               )}
             </div>
           </div>
+        </>
+      )}
         </>
       )}
     </div>

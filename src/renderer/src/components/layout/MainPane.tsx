@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { SessionTabs, SessionView } from '@/components/sessions'
+import { OmxSessionView } from '@/components/sessions/OmxSessionView'
 import { SessionTerminalView } from '@/components/sessions/SessionTerminalView'
 import { FileViewer } from '@/components/file-viewer'
 import { InlineDiffViewer, ImageDiffView } from '@/components/diff'
@@ -64,21 +65,21 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
     return null
   }, [])
 
-  // Collect all terminal-type sessions in the current scope.
+  // Collect all terminal-backed sessions in the current scope.
   const terminalSessions = useMemo(() => {
     const terminals: string[] = []
 
     if (selectedWorktreeId) {
       const sessions = sessionsByWorktree.get(selectedWorktreeId) || []
       for (const s of sessions) {
-        if (s.agent_sdk === 'terminal') terminals.push(s.id)
+        if (s.agent_sdk === 'terminal' || s.agent_sdk === 'omx') terminals.push(s.id)
       }
     }
 
     if (selectedConnectionId) {
       const sessions = sessionsByConnection.get(selectedConnectionId) || []
       for (const s of sessions) {
-        if (s.agent_sdk === 'terminal') terminals.push(s.id)
+        if (s.agent_sdk === 'terminal' || s.agent_sdk === 'omx') terminals.push(s.id)
       }
     }
 
@@ -129,14 +130,21 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
     }
 
     // Inline connection terminal takes priority
-    if (inlineConnectionSessionId && getAgentSdk(inlineConnectionSessionId) === 'terminal') {
+    if (
+      inlineConnectionSessionId &&
+      (getAgentSdk(inlineConnectionSessionId) === 'terminal' ||
+        getAgentSdk(inlineConnectionSessionId) === 'omx')
+    ) {
       if (!activeDiff && !(activeFilePath && !activeFilePath.startsWith('diff:'))) {
         return inlineConnectionSessionId
       }
     }
 
     // Regular active session
-    if (activeSessionId && getAgentSdk(activeSessionId) === 'terminal') {
+    if (
+      activeSessionId &&
+      (getAgentSdk(activeSessionId) === 'terminal' || getAgentSdk(activeSessionId) === 'omx')
+    ) {
       if (!activeDiff && !(activeFilePath && !activeFilePath.startsWith('diff:'))) {
         if (!inlineConnectionSessionId) {
           return activeSessionId
@@ -303,7 +311,10 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
     // Inline connection session view (sticky tab clicked in worktree mode)
     if (inlineConnectionSessionId) {
       // Terminal sessions are handled by the always-mounted section below
-      if (getAgentSdk(inlineConnectionSessionId) === 'terminal') {
+      if (
+        getAgentSdk(inlineConnectionSessionId) === 'terminal' ||
+        getAgentSdk(inlineConnectionSessionId) === 'omx'
+      ) {
         return null
       }
       return <SessionView key={inlineConnectionSessionId} sessionId={inlineConnectionSessionId} />
@@ -323,7 +334,7 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
 
     // Session is active - dispatch based on agent SDK
     // Terminal sessions are handled by the always-mounted section below
-    if (getAgentSdk(activeSessionId) === 'terminal') {
+    if (getAgentSdk(activeSessionId) === 'terminal' || getAgentSdk(activeSessionId) === 'omx') {
       return null
     }
     return <SessionView key={activeSessionId} sessionId={activeSessionId} />
@@ -339,9 +350,14 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
       {/* Always-mounted terminal sessions — kept alive to preserve PTY state across tab switches */}
       {mountedTerminalSessionIds.map((sessionId) => {
         const isActive = visibleTerminalId === sessionId
+        const sdk = getAgentSdk(sessionId)
         return (
           <div key={sessionId} className={isActive ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
-            <SessionTerminalView sessionId={sessionId} isVisible={isActive} />
+            {sdk === 'omx' ? (
+              <OmxSessionView sessionId={sessionId} isVisible={isActive} />
+            ) : (
+              <SessionTerminalView sessionId={sessionId} isVisible={isActive} />
+            )}
           </div>
         )
       })}

@@ -1519,7 +1519,7 @@ const terminalOps = {
     cwd: string,
     shell?: string,
     startupCommand?: string
-  ): Promise<{ success: boolean; cols?: number; rows?: number; error?: string }> =>
+  ): Promise<{ success: boolean; cols?: number; rows?: number; created?: boolean; error?: string }> =>
     ipcRenderer.invoke('terminal:create', worktreeId, cwd, shell, startupCommand),
 
   write: (worktreeId: string, data: string): void =>
@@ -1633,16 +1633,21 @@ const terminalOps = {
 }
 
 const omxOps = {
-  status: (
+  buildStartupCommand: (params: {
     cwd: string
-  ): Promise<{
+    tmuxSessionName: string
+    launchArgs?: string[]
+  }): Promise<{ success: boolean; command?: string; error?: string }> =>
+    ipcRenderer.invoke('omx:buildStartupCommand', params),
+
+  status: (cwd: string): Promise<{
     success: boolean
     modes: Array<{ mode: string; active: boolean; phase: string }>
     error?: string
-  }> => ipcRenderer.invoke('omx:status', cwd),
+  }> => ipcRenderer.invoke('omx:status', { cwd }),
 
-  killSession: (sessionName: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('omx:killSession', sessionName)
+  shutdownSession: (tmuxSessionName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('omx:shutdownSession', { tmuxSessionName })
 }
 
 const updaterOps = {

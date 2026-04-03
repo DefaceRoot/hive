@@ -103,7 +103,9 @@ export function WorktreePickerModal({
   const [selectedModel, setSelectedModel] = useState<{
     providerID: string; modelID: string; variant?: string
   } | null>(null)
-  const [selectedSdk, setSelectedSdk] = useState<'opencode' | 'claude-code' | 'codex' | null>(null)
+  const [selectedSdk, setSelectedSdk] = useState<
+    'opencode' | 'claude-code' | 'codex' | 'omx' | null
+  >(null)
 
   // ── Store access ────────────────────────────────────────────────
   const worktrees = useWorktreeStore(
@@ -143,7 +145,8 @@ export function WorktreePickerModal({
   // ── SDK / Model resolution ──────────────────────────────────────
   const availableAgentSdks = useSettingsStore((s) => s.availableAgentSdks)
   const defaultAgentSdk = useSettingsStore((s) => s.defaultAgentSdk) ?? 'opencode'
-  const defaultSdkNormalized = defaultAgentSdk === 'terminal' ? 'opencode' : defaultAgentSdk
+  const defaultSdkNormalized =
+    defaultAgentSdk === 'terminal' || defaultAgentSdk === 'omx' ? 'opencode' : defaultAgentSdk
   const agentSdk = selectedSdk ?? defaultSdkNormalized
 
   const autoResolvedModel = useMemo(() => {
@@ -218,7 +221,7 @@ export function WorktreePickerModal({
   }, [branches, branchFilter])
 
   // ── Handle SDK change ───────────────────────────────────────────
-  const handleSdkChange = useCallback((sdk: 'opencode' | 'claude-code' | 'codex') => {
+  const handleSdkChange = useCallback((sdk: 'opencode' | 'claude-code' | 'codex' | 'omx') => {
     setSelectedSdk(sdk)
     setSelectedModel(null)  // reset model — new SDK has different models
   }, [])
