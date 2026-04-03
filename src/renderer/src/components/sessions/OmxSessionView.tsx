@@ -261,12 +261,21 @@ export function OmxSessionView({
       </div>
 
       <div className="flex-1 min-h-0">
-        <TerminalView
-          worktreeId={sessionId}
-          cwd={cwd}
-          startupCommand={startupCommand}
-          isVisible={isVisible}
-        />
+        {startupCommand ? (
+          <TerminalView
+            worktreeId={sessionId}
+            cwd={cwd}
+            startupCommand={startupCommand}
+            isVisible={isVisible}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            <span className="inline-flex items-center gap-2 text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Preparing tmux-backed OMX terminal…
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )
