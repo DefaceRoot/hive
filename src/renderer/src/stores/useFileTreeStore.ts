@@ -14,6 +14,10 @@ interface FileTreeNode {
   children?: FileTreeNode[]
 }
 
+function pathDepth(path: string): number {
+  return path.split('/').filter(Boolean).length
+}
+
 interface FileTreeState {
   // Data - keyed by worktree path
   fileTreeByWorktree: Map<string, FileTreeNode[]>
@@ -101,6 +105,13 @@ export const useFileTreeStore = create<FileTreeState>()(
             newMap.set(worktreePath, result.tree!)
             return { fileTreeByWorktree: newMap, isLoading: false }
           })
+
+          const expandedPaths = Array.from(get().getExpandedPaths(worktreePath)).sort(
+            (a, b) => pathDepth(a) - pathDepth(b)
+          )
+          for (const expandedPath of expandedPaths) {
+            await get().loadChildren(worktreePath, expandedPath)
+          }
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : 'Failed to load file tree',
