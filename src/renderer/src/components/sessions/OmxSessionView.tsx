@@ -62,15 +62,15 @@ function resolveSessionCwd(sessionId: string): string | null {
 }
 
 const QUICK_COMMANDS = [
-  { label: 'Plan', value: '$plan', icon: Map },
-  { label: 'Ralph', value: '$ralph', icon: Wand2 },
-  { label: 'Team', value: '$team', icon: Users },
-  { label: 'Cancel', value: '$cancel', icon: Square },
-  { label: 'Status', value: 'omx status', icon: Activity }
+  { id: 'plan', label: 'Plan', value: '$plan', icon: Map },
+  { id: 'ralph', label: 'Loop', title: 'Ralph', value: '$ralph', icon: Wand2 },
+  { id: 'team', label: 'Team', value: '$team', icon: Users },
+  { id: 'cancel', label: 'Cancel', value: '$cancel', icon: Square },
+  { id: 'status', label: 'Status', value: 'omx status', icon: Activity }
 ] as const
 
 function quoteShellArg(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`
+  return `'${value.replace(/'/g, `"'"'"`)}'`
 }
 
 function buildOmxStartupCommand(cwd: string, tmuxSessionName: string): string {
@@ -95,18 +95,40 @@ export function OmxSessionView({
   const [modes, setModes] = useState<OmxModeStatus[]>([])
   const [statusError, setStatusError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [startupCommand, setStartupCommand] = useState<string>()
 
   const cwd = resolvedCwd || lastKnownCwd
   const tmuxSessionName = session?.opencode_session_id ?? null
-  const startupCommand = useMemo(() => {
-    if (!cwd || !tmuxSessionName) return undefined
-    return buildOmxStartupCommand(cwd, tmuxSessionName)
-  }, [cwd, tmuxSessionName])
 
   useEffect(() => {
     if (!resolvedCwd) return
     setLastKnownCwd((current) => (current === resolvedCwd ? current : resolvedCwd))
   }, [resolvedCwd])
+
+  useEffect(() => {
+    if (!cwd || !tmuxSessionName) {
+      setStartupCommand(undefined)
+      return
+    }
+
+    let cancelled = false
+    const buildCommand = window.omxOps.buildStartupCommand
+      ? window.omxOps.buildStartupCommand({ cwd, tmuxSessionName })
+      : Promise.resolve({ success: true, command: buildOmxStartupCommand(cwd, tmuxSessionName) })
+
+    buildCommand
+      .then((result) => {
+        if (cancelled) return
+        setStartupCommand(result.success ? result.command : undefined)
+      })
+      .catch(() => {
+        if (!cancelled) setStartupCommand(undefined)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [cwd, tmuxSessionName])
 
   const refreshStatus = useCallback(async () => {
     if (!cwd) return
@@ -174,14 +196,16 @@ export function OmxSessionView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {QUICK_COMMANDS.map(({ label, value, icon: Icon }) => (
+          {QUICK_COMMANDS.map(({ id, label, title, value, icon: Icon }) => (
             <Button
               key={value}
+              type="button"
               variant="outline"
               size="sm"
               onClick={() => sendRaw(value)}
               className="gap-1.5"
-              data-testid={`omx-quick-${label.toLowerCase()}`}
+              title={title ?? label}
+              data-testid={`omx-quick-${id}`}
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
@@ -199,6 +223,7 @@ export function OmxSessionView({
             modes.map((mode) => (
               <span
                 key={mode.mode}
+                data-testid={`omx-status-${mode.mode}`}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
                   mode.active
@@ -206,8 +231,7 @@ export function OmxSessionView({
                     : 'border-border bg-background text-muted-foreground'
                 )}
               >
-                <span>{mode.mode}</span>
-                <span className="opacity-70">· {mode.phase}</span>
+                <span>{`${mode.mode}: ${mode.phase}`}</span>
               </span>
             ))
           ) : (
