@@ -117,6 +117,15 @@ export interface CodexTurnStartResult {
   resumeCursor?: string
 }
 
+function safePayloadSnapshot(value: unknown, maxLength = 500): string {
+  try {
+    const serialized = JSON.stringify(value)
+    return serialized ? serialized.slice(0, maxLength) : ''
+  } catch {
+    return ''
+  }
+}
+
 // ── Event types ───────────────────────────────────────────────────
 
 export interface CodexManagerEvent {
@@ -918,7 +927,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         paramsKeys: notification.params
           ? Object.keys(notification.params as Record<string, unknown>)
           : [],
-        paramsSnapshot: JSON.stringify(notification.params).slice(0, 500)
+        paramsSnapshot: safePayloadSnapshot(notification.params)
       })
     }
 

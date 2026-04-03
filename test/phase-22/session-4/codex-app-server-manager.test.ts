@@ -204,6 +204,21 @@ describe('CodexAppServerManager', () => {
     })
   })
 
+  describe('notification robustness', () => {
+    it('does not throw when a server notification omits params', () => {
+      const { context } = createTestContext()
+
+      expect(() => {
+        manager.handleStdoutLine(
+          context,
+          JSON.stringify({
+            method: 'turn/completed'
+          })
+        )
+      }).not.toThrow()
+    })
+  })
+
   // ── Stderr classification ───────────────────────────────────────
 
   describe('classifyCodexStderrLine', () => {

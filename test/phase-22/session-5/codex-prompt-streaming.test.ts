@@ -235,6 +235,22 @@ describe('CodexImplementer.prompt()', () => {
     expect(textEvents[0].data.part.text).toBe('Hello')
   })
 
+  it('does not crash when a notification event has undefined payload', () => {
+    seedSession()
+
+    expect(() => {
+      ;(impl as any).handleManagerEvent({
+        id: 'e-undefined',
+        kind: 'notification',
+        provider: 'codex',
+        threadId: 'thread-1',
+        createdAt: new Date().toISOString(),
+        method: 'thread/name/updated',
+        payload: undefined
+      })
+    }).not.toThrow()
+  })
+
   it('ignores events for other threads', async () => {
     seedSession()
 

@@ -96,6 +96,15 @@ function truncateForImmediateTitle(text: string): string {
   return trimmed.slice(0, IMMEDIATE_TITLE_LENGTH - 3) + '...'
 }
 
+function safePayloadSnapshot(value: unknown, maxLength = 500): string {
+  try {
+    const serialized = JSON.stringify(value)
+    return serialized ? serialized.slice(0, maxLength) : ''
+  } catch {
+    return ''
+  }
+}
+
 export function normalizeCodexMessageTimestamps<T extends { created_at: string }>(rows: T[]): T[] {
   let lastTimestampMs = Number.NEGATIVE_INFINITY
 
@@ -156,7 +165,7 @@ export class CodexImplementer implements AgentSdkImplementer {
         method: event.method,
         threadId: event.threadId,
         payloadKeys: event.payload ? Object.keys(event.payload as Record<string, unknown>) : [],
-        payloadSnapshot: JSON.stringify(event.payload).slice(0, 500)
+        payloadSnapshot: safePayloadSnapshot(event.payload)
       })
     }
 
@@ -296,7 +305,7 @@ export class CodexImplementer implements AgentSdkImplementer {
     const payload = asObject(event.payload)
     log.info('DEBUG handleProviderTitleUpdate: raw payload', {
       payloadKeys: payload ? Object.keys(payload) : [],
-      fullPayload: JSON.stringify(event.payload).slice(0, 1000)
+      fullPayload: safePayloadSnapshot(event.payload, 1000)
     })
     const title = asString(payload?.threadName)
     if (!title) {
