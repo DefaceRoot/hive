@@ -79,7 +79,7 @@ interface Session {
   status: 'active' | 'completed' | 'error'
   opencode_session_id: string | null
   agent_sdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
-  mode: 'build' | 'plan'
+  mode: 'build' | 'plan' | 'super-plan'
   model_provider_id: string | null
   model_id: string | null
   model_variant: string | null
@@ -598,7 +598,7 @@ declare global {
       ) => Promise<{ success: boolean; messages: unknown[]; error?: string }>
       // List available models from all configured providers
       listModels: (opts?: {
-        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
       }) => Promise<{
         success: boolean
         providers: Record<string, unknown>
@@ -609,13 +609,13 @@ declare global {
         providerID: string
         modelID: string
         variant?: string
-        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
       }) => Promise<{ success: boolean; error?: string }>
       // Get model info (name, context limit)
       modelInfo: (
         worktreePath: string,
         modelId: string,
-        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
       ) => Promise<{
         success: boolean
         model?: { id: string; name: string; limit: { context: number } }
@@ -915,19 +915,14 @@ declare global {
     ghosttyShutdown: () => Promise<void>
   }
   omxOps: {
-    buildStartupCommand: (params: {
-      cwd: string
-      tmuxSessionName: string
-      launchArgs?: string[]
-    }) => Promise<{ success: boolean; command?: string; error?: string }>
     status: (cwd: string) => Promise<{
       success: boolean
       modes: Array<{ mode: string; active: boolean; phase: string }>
       error?: string
     }>
-    shutdownSession: (tmuxSessionName: string) => Promise<{ success: boolean; error?: string }>
+    killSession: (tmuxSessionName: string) => Promise<{ success: boolean; error?: string }>
   }
-    gitOps: {
+  gitOps: {
       // Get file statuses for a worktree
       getFileStatuses: (worktreePath: string) => Promise<{
         success: boolean

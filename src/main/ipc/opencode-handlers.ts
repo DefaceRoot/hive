@@ -414,7 +414,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService && sessionId) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
             const impl = sdkManager.getImplementer(sdkId)
             const commands = await impl.listCommands(worktreePath)
             return { success: true, commands }
@@ -469,7 +469,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
             const impl = sdkManager.getImplementer(sdkId)
             await impl.sendCommand(worktreePath, sessionId, command, args)
             return { success: true }
@@ -497,7 +497,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.undo(worktreePath, sessionId, '')
             return { success: true, ...(result as Record<string, unknown>) }
@@ -526,7 +526,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.redo(worktreePath, sessionId, '')
             return { success: true, ...(result as Record<string, unknown>) }
@@ -866,7 +866,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
             const impl = sdkManager.getImplementer(sdkId)
             await impl.renameSession(worktreePath ?? '', opencodeSessionId, title)
             return { success: true }
@@ -919,7 +919,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
             const impl = sdkManager.getImplementer(sdkId)
             const messages = await impl.getMessages(worktreePath, opencodeSessionId)
             return { success: true, messages }
@@ -948,7 +948,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.abort(worktreePath, opencodeSessionId)
             return { success: result }

@@ -4,7 +4,6 @@ import type { SelectedModel } from './useSettingsStore'
 import { useGitStore } from './useGitStore'
 import { useWorktreeStore } from './useWorktreeStore'
 import { notifyKanbanSessionSync } from './store-coordination'
-import { useSettingsStore } from './useSettingsStore'
 
 // Session mode type
 export type SessionMode = 'build' | 'plan' | 'super-plan'
@@ -465,7 +464,7 @@ export const useSessionStore = create<SessionState>()(
           if (isTerminalSession) {
             if (omxTmuxSessionId) {
               try {
-                await window.omxOps.killSession(omxTmuxSessionId)
+                await window.omxOps.shutdownSession(omxTmuxSessionId)
               } catch {
                 // Best-effort cleanup — tmux session may already be gone
               }
@@ -1120,7 +1119,7 @@ export const useSessionStore = create<SessionState>()(
         }
 
         // Find the session's SDK to route correctly (search both scopes)
-        let agentSdk: 'opencode' | 'claude-code' | 'codex' | 'terminal' = 'opencode'
+        let agentSdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal' = 'opencode'
         for (const sessions of get().sessionsByWorktree.values()) {
           const found = sessions.find((s) => s.id === sessionId)
           if (found?.agent_sdk) {

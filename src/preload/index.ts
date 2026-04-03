@@ -97,7 +97,7 @@ const db = {
       name?: string | null
       opencode_session_id?: string | null
       agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
-      mode?: 'build' | 'plan'
+      mode?: 'build' | 'plan' | 'super-plan'
       model_provider_id?: string | null
       model_id?: string | null
       model_variant?: string | null
@@ -115,7 +115,7 @@ const db = {
         status?: 'active' | 'completed' | 'error'
         opencode_session_id?: string | null
         agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
-        mode?: 'build' | 'plan'
+        mode?: 'build' | 'plan' | 'super-plan'
         model_provider_id?: string | null
         model_id?: string | null
         model_variant?: string | null
@@ -1188,7 +1188,7 @@ const opencodeOps = {
 
   // List available models from all configured providers
   listModels: (opts?: {
-    agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+    agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
   }): Promise<{
     success: boolean
     providers: Record<string, unknown>
@@ -1201,7 +1201,7 @@ const opencodeOps = {
       providerID: string
       modelID: string
       variant?: string
-      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
     } | null
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('opencode:setModel', model),
@@ -1210,7 +1210,7 @@ const opencodeOps = {
   modelInfo: (
     worktreePath: string,
     modelId: string,
-    agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+    agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
   ): Promise<{
     success: boolean
     model?: { id: string; name: string; limit: { context: number } }
@@ -1638,21 +1638,14 @@ const terminalOps = {
 }
 
 const omxOps = {
-  buildStartupCommand: (params: {
-    cwd: string
-    tmuxSessionName: string
-    launchArgs?: string[]
-  }): Promise<{ success: boolean; command?: string; error?: string }> =>
-    ipcRenderer.invoke('omx:buildStartupCommand', params),
-
   status: (cwd: string): Promise<{
     success: boolean
     modes: Array<{ mode: string; active: boolean; phase: string }>
     error?: string
-  }> => ipcRenderer.invoke('omx:status', { cwd }),
+  }> => ipcRenderer.invoke('omx:status', cwd),
 
-  shutdownSession: (tmuxSessionName: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('omx:shutdownSession', { tmuxSessionName })
+  killSession: (tmuxSessionName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('omx:killSession', tmuxSessionName)
 }
 
 const updaterOps = {

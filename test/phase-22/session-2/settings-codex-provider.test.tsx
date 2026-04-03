@@ -79,7 +79,7 @@ describe('SettingsGeneral: Codex provider button', () => {
     expect(codexButton).toHaveTextContent('Codex')
   })
 
-  it('renders all four provider buttons (OpenCode, Claude Code, Codex, Terminal)', async () => {
+  it('renders all five provider buttons (OpenCode, Claude Code, Codex, OMX, Terminal)', async () => {
     const { SettingsGeneral } = await import(
       '@/components/settings/SettingsGeneral'
     )
@@ -88,7 +88,20 @@ describe('SettingsGeneral: Codex provider button', () => {
     expect(screen.getByTestId('agent-sdk-opencode')).toBeInTheDocument()
     expect(screen.getByTestId('agent-sdk-claude-code')).toBeInTheDocument()
     expect(screen.getByTestId('agent-sdk-codex')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-sdk-omx')).toBeInTheDocument()
     expect(screen.getByTestId('agent-sdk-terminal')).toBeInTheDocument()
+  })
+
+  it('clicking OMX button calls updateSetting with omx', async () => {
+    const { SettingsGeneral } = await import(
+      '@/components/settings/SettingsGeneral'
+    )
+    render(<SettingsGeneral />)
+
+    const omxButton = screen.getByTestId('agent-sdk-omx')
+    await userEvent.click(omxButton)
+
+    expect(mockUpdateSetting).toHaveBeenCalledWith('defaultAgentSdk', 'omx')
   })
 
   it('clicking Codex button calls updateSetting with codex', async () => {

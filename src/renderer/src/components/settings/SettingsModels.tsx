@@ -72,7 +72,10 @@ export function SettingsModels(): React.JSX.Element {
             onChange={(model) => {
               // Update both legacy selectedModel and per-SDK entry so
               // resolveModelForSdk returns the new model for new sessions
-              const sdk = defaultAgentSdk === 'terminal' ? 'opencode' : defaultAgentSdk
+              const sdk =
+                defaultAgentSdk === 'terminal' || defaultAgentSdk === 'omx'
+                  ? 'opencode'
+                  : defaultAgentSdk
               setSelectedModel(model)
               setSelectedModelForSdk(sdk, model)
             }}
@@ -80,7 +83,10 @@ export function SettingsModels(): React.JSX.Element {
           {effectiveModel && (
             <button
               onClick={() => {
-                const sdk = defaultAgentSdk === 'terminal' ? 'opencode' : defaultAgentSdk
+                const sdk =
+                  defaultAgentSdk === 'terminal' || defaultAgentSdk === 'omx'
+                    ? 'opencode'
+                    : defaultAgentSdk
                 setSelectedModel(null)
                 setSelectedModelForSdk(sdk, null)
               }}

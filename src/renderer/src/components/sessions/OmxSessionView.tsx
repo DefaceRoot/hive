@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Map, RefreshCw, Square, Users, Wand2 } from 'lucide-react'
+import { Activity, Loader2, Map, RefreshCw, Square, Users, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { TerminalView } from '@/components/terminal/TerminalView'
@@ -65,62 +65,48 @@ const QUICK_COMMANDS = [
   { label: 'Plan', value: '$plan', icon: Map },
   { label: 'Ralph', value: '$ralph', icon: Wand2 },
   { label: 'Team', value: '$team', icon: Users },
-  { label: 'Cancel', value: '$cancel', icon: Square }
+  { label: 'Cancel', value: '$cancel', icon: Square },
+  { label: 'Status', value: 'omx status', icon: Activity }
 ] as const
+
+function quoteShellArg(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`
+}
+
+function buildOmxStartupCommand(cwd: string, tmuxSessionName: string): string {
+  const quotedSession = quoteShellArg(tmuxSessionName)
+  const quotedCwd = quoteShellArg(cwd)
+  return [
+    `tmux has-session -t ${quotedSession} 2>/dev/null || tmux new-session -d -s ${quotedSession} -c ${quotedCwd} 'omx --madmax --high'`,
+    'tmux set-option -s extended-keys on >/dev/null 2>&1 || true',
+    'tmux set-option -s extended-keys-format csi-u >/dev/null 2>&1 || true',
+    `tmux set-option -t ${quotedSession} -g mouse on >/dev/null 2>&1 || true`,
+    `tmux attach-session -t ${quotedSession}`
+  ].join('; ')
+}
 
 export function OmxSessionView({
   sessionId,
   isVisible = true
 }: OmxSessionViewProps): React.JSX.Element {
-  const session = useSessionStore((state) => findSession(sessionId))
-  const resolvedCwd = useMemo(() => resolveSessionCwd(sessionId), [sessionId, session])
+  const session = useSessionStore(() => findSession(sessionId))
+  const resolvedCwd = useMemo(() => resolveSessionCwd(sessionId), [sessionId])
   const [lastKnownCwd, setLastKnownCwd] = useState<string | null>(null)
-  const [startupCommand, setStartupCommand] = useState<string | null>(null)
-  const [isPreparing, setIsPreparing] = useState(true)
   const [modes, setModes] = useState<OmxModeStatus[]>([])
   const [statusError, setStatusError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [modes, setModes] = useState<Array<{ mode: string; active: boolean; phase: string }>>([])
 
   const cwd = resolvedCwd || lastKnownCwd
   const tmuxSessionName = session?.opencode_session_id ?? null
+  const startupCommand = useMemo(() => {
+    if (!cwd || !tmuxSessionName) return undefined
+    return buildOmxStartupCommand(cwd, tmuxSessionName)
+  }, [cwd, tmuxSessionName])
 
   useEffect(() => {
     if (!resolvedCwd) return
     setLastKnownCwd((current) => (current === resolvedCwd ? current : resolvedCwd))
   }, [resolvedCwd])
-
-  useEffect(() => {
-    let cancelled = false
-
-    if (!cwd || !tmuxSessionName) {
-      setStartupCommand(null)
-      setIsPreparing(false)
-      return
-    }
-
-    setIsPreparing(true)
-    window.omxOps
-      .buildStartupCommand({ cwd, tmuxSessionName })
-      .then((result) => {
-        if (cancelled) return
-        if (result.success && result.command) {
-          setStartupCommand(result.command)
-        } else {
-          setStartupCommand(null)
-          setStatusError(result.error || 'Failed to prepare OMX startup command')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsPreparing(false)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [cwd, tmuxSessionName])
 
   const refreshStatus = useCallback(async () => {
     if (!cwd) return
@@ -204,7 +190,7 @@ export function OmxSessionView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isPreparing ? (
+          {!startupCommand ? (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
               Preparing OMX bootstrap…
@@ -254,7 +240,7 @@ export function OmxSessionView({
         <TerminalView
           worktreeId={sessionId}
           cwd={cwd}
-          startupCommand={startupCommand ?? undefined}
+          startupCommand={startupCommand}
           isVisible={isVisible}
         />
       </div>

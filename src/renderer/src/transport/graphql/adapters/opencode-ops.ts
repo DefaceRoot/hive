@@ -140,7 +140,7 @@ export function createOpenCodeOpsAdapter(): OpenCodeOpsApi {
     },
 
     async listModels(opts?: {
-      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
     }): Promise<{
       success: boolean
       providers: Record<string, unknown>
@@ -171,7 +171,7 @@ export function createOpenCodeOpsAdapter(): OpenCodeOpsApi {
       providerID: string
       modelID: string
       variant?: string
-      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
     }): Promise<{ success: boolean; error?: string }> {
       const input: Record<string, unknown> = {
         providerID: model.providerID,
@@ -196,7 +196,7 @@ export function createOpenCodeOpsAdapter(): OpenCodeOpsApi {
     async modelInfo(
       worktreePath: string,
       modelId: string,
-      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+      agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
     ): Promise<{
       success: boolean
       model?: { id: string; name: string; limit: { context: number } }
