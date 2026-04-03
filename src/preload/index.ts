@@ -96,7 +96,7 @@ const db = {
       connection_id?: string | null
       name?: string | null
       opencode_session_id?: string | null
-      agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+      agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
       mode?: 'build' | 'plan'
       model_provider_id?: string | null
       model_id?: string | null
@@ -114,7 +114,7 @@ const db = {
         name?: string | null
         status?: 'active' | 'completed' | 'error'
         opencode_session_id?: string | null
-        agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+        agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
         mode?: 'build' | 'plan'
         model_provider_id?: string | null
         model_id?: string | null
@@ -422,8 +422,13 @@ const systemOps = {
   // Check if response logging is enabled (--log flag)
   isLogMode: (): Promise<boolean> => ipcRenderer.invoke('system:isLogMode'),
 
-  // Detect which agent SDKs (opencode, claude) are installed on the system
-  detectAgentSdks: (): Promise<{ opencode: boolean; claude: boolean }> =>
+  // Detect which agent SDKs are installed on the system
+  detectAgentSdks: (): Promise<{
+    opencode: boolean
+    claude: boolean
+    codex: boolean
+    omx: boolean
+  }> =>
     ipcRenderer.invoke('system:detectAgentSdks'),
 
   // Quit the app (needed for macOS where window.close() doesn't quit)

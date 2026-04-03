@@ -536,7 +536,7 @@ export function createDbAdapter(): DbApi {
         connection_id?: string | null
         name?: string | null
         opencode_session_id?: string | null
-        agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+        agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
         model_provider_id?: string | null
         model_id?: string | null
         model_variant?: string | null
@@ -601,7 +601,7 @@ export function createDbAdapter(): DbApi {
           name?: string | null
           status?: 'active' | 'completed' | 'error'
           opencode_session_id?: string | null
-          agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+          agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
           mode?: 'build' | 'plan'
           model_provider_id?: string | null
           model_id?: string | null

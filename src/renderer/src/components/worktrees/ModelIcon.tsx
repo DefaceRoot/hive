@@ -48,8 +48,8 @@ export function ModelIcon({ worktreeId, className }: ModelIconProps): React.JSX.
     return <img src={claudeIcon} alt="Claude" className={cn(className)} draggable={false} />
   }
 
-  // Codex SDK always uses OpenAI/GPT models
-  if (latestAgentSdk === 'codex') {
+  // Codex/OMX SDKs always use OpenAI/GPT models under the hood
+  if (latestAgentSdk === 'codex' || latestAgentSdk === 'omx') {
     return <img src={openaiIcon} alt="OpenAI" className={cn(className)} draggable={false} />
   }
 

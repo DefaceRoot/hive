@@ -78,7 +78,7 @@ interface Session {
   name: string | null
   status: 'active' | 'completed' | 'error'
   opencode_session_id: string | null
-  agent_sdk: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+  agent_sdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
   mode: 'build' | 'plan'
   model_provider_id: string | null
   model_id: string | null
@@ -329,7 +329,7 @@ declare global {
           connection_id?: string | null
           name?: string | null
           opencode_session_id?: string | null
-          agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+          agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
           model_provider_id?: string | null
           model_id?: string | null
           model_variant?: string | null
@@ -344,7 +344,7 @@ declare global {
             name?: string | null
             status?: 'active' | 'completed' | 'error'
             opencode_session_id?: string | null
-            agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+            agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
             mode?: 'build' | 'plan'
             model_provider_id?: string | null
             model_id?: string | null
@@ -515,7 +515,12 @@ declare global {
         logs: string
       }>
       isLogMode: () => Promise<boolean>
-      detectAgentSdks: () => Promise<{ opencode: boolean; claude: boolean; codex: boolean }>
+      detectAgentSdks: () => Promise<{
+        opencode: boolean
+        claude: boolean
+        codex: boolean
+        omx: boolean
+      }>
       quitApp: () => Promise<void>
       openInApp: (appName: string, path: string) => Promise<{ success: boolean; error?: string }>
       openInChrome: (
