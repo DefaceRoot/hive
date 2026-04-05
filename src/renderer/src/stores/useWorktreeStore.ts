@@ -3,6 +3,7 @@ import { useProjectStore } from './useProjectStore'
 import { useKanbanStore } from './useKanbanStore'
 import { useScriptStore, killRunScript } from './useScriptStore'
 import { useSessionStore } from './useSessionStore'
+import { useTerminalStore } from './useTerminalStore'
 import { useWorktreeStatusStore } from './useWorktreeStatusStore'
 import { useGitStore } from './useGitStore'
 import type { SelectedModel } from './useSettingsStore'
@@ -158,6 +159,36 @@ function loadPersistedOrder(): Map<string, string[]> {
     // Ignore parse errors
   }
   return new Map()
+}
+
+async function closeSessionsForArchivedWorktree(worktreeId: string): Promise<void> {
+  const sessionStore = useSessionStore.getState()
+  const worktreeSessions = sessionStore.sessionsByWorktree.get(worktreeId) || []
+  const impactedConnectionIds = new Set<string>()
+
+  for (const connection of (await import('./useConnectionStore')).useConnectionStore.getState()
+    .connections) {
+    if (connection.members.some((member) => member.worktree_id === worktreeId)) {
+      impactedConnectionIds.add(connection.id)
+    }
+  }
+
+  const sessionIdsToClose = [
+    ...worktreeSessions.map((session) => session.id),
+    ...Array.from(impactedConnectionIds).flatMap((connectionId) =>
+      (sessionStore.sessionsByConnection.get(connectionId) || [])
+        .filter((session) => session.agent_sdk === 'terminal' || session.agent_sdk === 'omx')
+        .map((session) => session.id)
+    )
+  ]
+
+  for (const sessionId of new Set(sessionIdsToClose)) {
+    try {
+      await useSessionStore.getState().closeSession(sessionId)
+    } catch {
+      // Best-effort cleanup — continue archiving even if a session was already gone
+    }
+  }
 }
 
 export const useWorktreeStore = create<WorktreeState>((set, get) => ({
@@ -338,7 +369,7 @@ export const useWorktreeStore = create<WorktreeState>((set, get) => ({
       }
 
       // 2. Abort any active streaming sessions
-      const sessionIds = useSessionStore.getState().sessionsByWorktree.get(worktreeId) || []
+      const sessionIds = [...(useSessionStore.getState().sessionsByWorktree.get(worktreeId) || [])]
       const statusStore = useWorktreeStatusStore.getState()
       for (const session of sessionIds) {
         const status = statusStore.sessionStatuses[session.id]
@@ -353,7 +384,17 @@ export const useWorktreeStore = create<WorktreeState>((set, get) => ({
         }
       }
 
-      // 3. Proceed with archive
+      // 3. Close all session tabs for this worktree so PTYs/tmux sessions are torn down
+      await closeSessionsForArchivedWorktree(worktreeId)
+
+      // 4. Tear down the bottom-panel terminal for this worktree, if any
+      try {
+        await useTerminalStore.getState().destroyTerminal(worktreeId)
+      } catch {
+        // Best-effort cleanup
+      }
+
+      // 5. Proceed with archive
       const result = await window.worktreeOps.delete({
         worktreeId,
         worktreePath,
@@ -366,7 +407,30 @@ export const useWorktreeStore = create<WorktreeState>((set, get) => ({
         return { success: false, error: result.error || 'Failed to archive worktree' }
       }
 
-      // 4. Clean up any connections referencing this worktree
+      // 6. Clean up any connection sessions that will disappear with this worktree
+      try {
+        const { useConnectionStore } = await import('./useConnectionStore')
+        const connectionIdsToClose = useConnectionStore
+          .getState()
+          .connections.filter(
+            (connection) =>
+              connection.members.length === 1 &&
+              connection.members.some((member) => member.worktree_id === worktreeId)
+          )
+          .map((connection) => connection.id)
+
+        for (const connectionId of connectionIdsToClose) {
+          const connectionSessions =
+            useSessionStore.getState().sessionsByConnection.get(connectionId) || []
+          for (const session of [...connectionSessions]) {
+            await useSessionStore.getState().closeSession(session.id)
+          }
+        }
+      } catch {
+        // Non-critical -- continue archive cleanup
+      }
+
+      // 7. Clean up any connections referencing this worktree
       try {
         await window.connectionOps.removeWorktreeFromAll(worktreeId)
         // Reload connections to reflect the change
@@ -435,6 +499,36 @@ export const useWorktreeStore = create<WorktreeState>((set, get) => ({
     }))
 
     try {
+      const scriptState = useScriptStore.getState().scriptStates[worktreeId]
+      if (scriptState?.runRunning) {
+        try {
+          await killRunScript(worktreeId)
+        } catch {
+          // Best-effort cleanup
+        }
+      }
+
+      const worktreeSessions = [...(useSessionStore.getState().sessionsByWorktree.get(worktreeId) || [])]
+      const statusStore = useWorktreeStatusStore.getState()
+      for (const session of worktreeSessions) {
+        const status = statusStore.sessionStatuses[session.id]
+        if ((status?.status === 'working' || status?.status === 'planning') && session.opencode_session_id) {
+          try {
+            await window.opencodeOps.abort(worktreePath, session.opencode_session_id)
+          } catch {
+            // Best-effort cleanup
+          }
+        }
+      }
+
+      await closeSessionsForArchivedWorktree(worktreeId)
+
+      try {
+        await useTerminalStore.getState().destroyTerminal(worktreeId)
+      } catch {
+        // Best-effort cleanup
+      }
+
       const result = await window.worktreeOps.delete({
         worktreeId,
         worktreePath,
@@ -445,6 +539,28 @@ export const useWorktreeStore = create<WorktreeState>((set, get) => ({
 
       if (!result.success) {
         return { success: false, error: result.error || 'Failed to unbranch worktree' }
+      }
+
+      try {
+        const { useConnectionStore } = await import('./useConnectionStore')
+        const connectionIdsToClose = useConnectionStore
+          .getState()
+          .connections.filter(
+            (connection) =>
+              connection.members.length === 1 &&
+              connection.members.some((member) => member.worktree_id === worktreeId)
+          )
+          .map((connection) => connection.id)
+
+        for (const connectionId of connectionIdsToClose) {
+          const connectionSessions =
+            useSessionStore.getState().sessionsByConnection.get(connectionId) || []
+          for (const session of [...connectionSessions]) {
+            await useSessionStore.getState().closeSession(session.id)
+          }
+        }
+      } catch {
+        // Non-critical -- continue unbranch cleanup
       }
 
       // Clean up any connections referencing this worktree

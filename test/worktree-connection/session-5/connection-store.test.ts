@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { act } from '@testing-library/react'
 import { useConnectionStore } from '../../../src/renderer/src/stores/useConnectionStore'
+import { useSessionStore } from '../../../src/renderer/src/stores/useSessionStore'
 import { useWorktreeStore } from '../../../src/renderer/src/stores/useWorktreeStore'
 
 // ---------- Mock window.connectionOps ----------
@@ -183,6 +184,46 @@ describe('Session 5: Connection Store', () => {
       expect(state.isLoading).toBe(false)
       expect(state.connections).toHaveLength(0)
     })
+
+    test('closes sessions for connections that disappeared during reload', async () => {
+      const closeSession = vi.fn().mockResolvedValue({ success: true })
+      useConnectionStore.setState({ connections: [makeConnection()] })
+      useSessionStore.setState({
+        sessionsByConnection: new Map([
+          [
+            'conn-1',
+            [
+              {
+                id: 'session-1',
+                worktree_id: null,
+                project_id: 'proj-1',
+                connection_id: 'conn-1',
+                name: 'Session 1',
+                status: 'active',
+                opencode_session_id: 'hive-omx-conn-1',
+                agent_sdk: 'omx',
+                mode: 'build',
+                model_provider_id: null,
+                model_id: null,
+                model_variant: null,
+                created_at: '2025-01-01T00:00:00.000Z',
+                updated_at: '2025-01-01T00:00:00.000Z',
+                completed_at: null
+              }
+            ]
+          ]
+        ]),
+        closeSession
+      })
+      mockConnectionOps.getAll.mockResolvedValueOnce({ success: true, connections: [] })
+
+      await act(async () => {
+        await useConnectionStore.getState().loadConnections()
+      })
+
+      expect(closeSession).toHaveBeenCalledWith('session-1')
+      expect(useConnectionStore.getState().connections).toEqual([])
+    })
   })
 
   describe('createConnection', () => {
@@ -284,6 +325,48 @@ describe('Session 5: Connection Store', () => {
 
       // Connection should still be in state
       expect(useConnectionStore.getState().connections).toHaveLength(1)
+    })
+
+    test('closes connection-scoped sessions after a successful delete', async () => {
+      const closeSession = vi.fn().mockResolvedValue({ success: true })
+      useConnectionStore.setState({
+        connections: [makeConnection()],
+        selectedConnectionId: 'conn-1'
+      })
+      useSessionStore.setState({
+        sessionsByConnection: new Map([
+          [
+            'conn-1',
+            [
+              {
+                id: 'session-1',
+                worktree_id: null,
+                project_id: 'proj-1',
+                connection_id: 'conn-1',
+                name: 'Session 1',
+                status: 'active',
+                opencode_session_id: null,
+                agent_sdk: 'omx',
+                mode: 'build',
+                model_provider_id: null,
+                model_id: null,
+                model_variant: null,
+                created_at: '2025-01-01T00:00:00.000Z',
+                updated_at: '2025-01-01T00:00:00.000Z',
+                completed_at: null
+              }
+            ]
+          ]
+        ]),
+        closeSession
+      })
+      mockConnectionOps.delete.mockResolvedValueOnce({ success: true })
+
+      await act(async () => {
+        await useConnectionStore.getState().deleteConnection('conn-1')
+      })
+
+      expect(closeSession).toHaveBeenCalledWith('session-1')
     })
   })
 

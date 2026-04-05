@@ -21,6 +21,7 @@ export type Scalars = {
 export type AgentSdk =
   | 'claude_code'
   | 'codex'
+  | 'omx'
   | 'opencode'
   | 'terminal';
 
@@ -28,6 +29,7 @@ export type AgentSdkDetection = {
   __typename?: 'AgentSdkDetection';
   claude: Scalars['Boolean']['output'];
   codex: Scalars['Boolean']['output'];
+  omx: Scalars['Boolean']['output'];
   opencode: Scalars['Boolean']['output'];
 };
 
@@ -623,6 +625,7 @@ export type Mutation = {
   kanbanToggleSimpleMode: SuccessResult;
   kanbanUnarchiveTicket?: Maybe<KanbanTicket>;
   kanbanUpdateTicket?: Maybe<KanbanTicket>;
+  omxShutdownSession: SuccessResult;
   opencodeAbort: SuccessResult;
   opencodeCommand: SuccessResult;
   opencodeCommandApprovalReply: SuccessResult;
@@ -958,6 +961,11 @@ export type MutationKanbanUpdateTicketArgs = {
 };
 
 
+export type MutationOmxShutdownSessionArgs = {
+  tmuxSessionName: Scalars['String']['input'];
+};
+
+
 export type MutationOpencodeAbortArgs = {
   sessionId: Scalars['String']['input'];
   worktreePath: Scalars['String']['input'];
@@ -1146,6 +1154,7 @@ export type MutationSystemRegisterPushTokenArgs = {
 export type MutationTerminalCreateArgs = {
   cwd: Scalars['String']['input'];
   shell?: InputMaybe<Scalars['String']['input']>;
+  startupCommand?: InputMaybe<Scalars['String']['input']>;
   worktreeId: Scalars['ID']['input'];
 };
 
@@ -1257,6 +1266,13 @@ export type MutationWorktreeRemoveAttachmentArgs = {
 export type MutationWorktreeSetPinnedArgs = {
   pinned: Scalars['Boolean']['input'];
   worktreeId: Scalars['ID']['input'];
+};
+
+export type OmxStartupCommandResult = {
+  __typename?: 'OmxStartupCommandResult';
+  command?: Maybe<Scalars['String']['output']>;
+  error?: Maybe<Scalars['String']['output']>;
+  success: Scalars['Boolean']['output'];
 };
 
 export type OpenCodeCapabilities = {
@@ -1525,6 +1541,7 @@ export type Query = {
   kanbanTicket?: Maybe<KanbanTicket>;
   kanbanTicketsByProject: Array<KanbanTicket>;
   kanbanTicketsBySession: Array<KanbanTicket>;
+  omxBuildStartupCommand: OmxStartupCommandResult;
   opencodeCapabilities: OpenCodeCapabilitiesResult;
   opencodeCommands: OpenCodeCommandsResult;
   opencodeMessages: OpenCodeMessagesResult;
@@ -1741,6 +1758,13 @@ export type QueryKanbanTicketsByProjectArgs = {
 
 export type QueryKanbanTicketsBySessionArgs = {
   sessionId: Scalars['ID']['input'];
+};
+
+
+export type QueryOmxBuildStartupCommandArgs = {
+  cwd: Scalars['String']['input'];
+  launchArgs?: InputMaybe<Array<Scalars['String']['input']>>;
+  tmuxSessionName: Scalars['String']['input'];
 };
 
 
@@ -2426,6 +2450,7 @@ export type ResolversTypes = ResolversObject<{
   MessagePartInput: MessagePartInput;
   ModelInput: ModelInput;
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
+  OmxStartupCommandResult: ResolverTypeWrapper<OmxStartupCommandResult>;
   OpenCodeCapabilities: ResolverTypeWrapper<OpenCodeCapabilities>;
   OpenCodeCapabilitiesResult: ResolverTypeWrapper<OpenCodeCapabilitiesResult>;
   OpenCodeCommand: ResolverTypeWrapper<OpenCodeCommand>;
@@ -2573,6 +2598,7 @@ export type ResolversParentTypes = ResolversObject<{
   MessagePartInput: MessagePartInput;
   ModelInput: ModelInput;
   Mutation: Record<PropertyKey, never>;
+  OmxStartupCommandResult: OmxStartupCommandResult;
   OpenCodeCapabilities: OpenCodeCapabilities;
   OpenCodeCapabilitiesResult: OpenCodeCapabilitiesResult;
   OpenCodeCommand: OpenCodeCommand;
@@ -2643,6 +2669,7 @@ export type ResolversParentTypes = ResolversObject<{
 export type AgentSdkDetectionResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['AgentSdkDetection'] = ResolversParentTypes['AgentSdkDetection']> = ResolversObject<{
   claude?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   codex?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  omx?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   opencode?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
 }>;
 
@@ -3030,6 +3057,7 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   kanbanToggleSimpleMode?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationKanbanToggleSimpleModeArgs, 'enabled' | 'projectId'>>;
   kanbanUnarchiveTicket?: Resolver<Maybe<ResolversTypes['KanbanTicket']>, ParentType, ContextType, RequireFields<MutationKanbanUnarchiveTicketArgs, 'id'>>;
   kanbanUpdateTicket?: Resolver<Maybe<ResolversTypes['KanbanTicket']>, ParentType, ContextType, RequireFields<MutationKanbanUpdateTicketArgs, 'id' | 'input'>>;
+  omxShutdownSession?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationOmxShutdownSessionArgs, 'tmuxSessionName'>>;
   opencodeAbort?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationOpencodeAbortArgs, 'sessionId' | 'worktreePath'>>;
   opencodeCommand?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationOpencodeCommandArgs, 'input'>>;
   opencodeCommandApprovalReply?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationOpencodeCommandApprovalReplyArgs, 'input'>>;
@@ -3085,6 +3113,12 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   worktreeDetachPR?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationWorktreeDetachPrArgs, 'worktreeId'>>;
   worktreeRemoveAttachment?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationWorktreeRemoveAttachmentArgs, 'attachmentId' | 'worktreeId'>>;
   worktreeSetPinned?: Resolver<ResolversTypes['SuccessResult'], ParentType, ContextType, RequireFields<MutationWorktreeSetPinnedArgs, 'pinned' | 'worktreeId'>>;
+}>;
+
+export type OmxStartupCommandResultResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['OmxStartupCommandResult'] = ResolversParentTypes['OmxStartupCommandResult']> = ResolversObject<{
+  command?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  error?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  success?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
 }>;
 
 export type OpenCodeCapabilitiesResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['OpenCodeCapabilities'] = ResolversParentTypes['OpenCodeCapabilities']> = ResolversObject<{
@@ -3288,6 +3322,7 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   kanbanTicket?: Resolver<Maybe<ResolversTypes['KanbanTicket']>, ParentType, ContextType, RequireFields<QueryKanbanTicketArgs, 'id'>>;
   kanbanTicketsByProject?: Resolver<Array<ResolversTypes['KanbanTicket']>, ParentType, ContextType, RequireFields<QueryKanbanTicketsByProjectArgs, 'projectId'>>;
   kanbanTicketsBySession?: Resolver<Array<ResolversTypes['KanbanTicket']>, ParentType, ContextType, RequireFields<QueryKanbanTicketsBySessionArgs, 'sessionId'>>;
+  omxBuildStartupCommand?: Resolver<ResolversTypes['OmxStartupCommandResult'], ParentType, ContextType, RequireFields<QueryOmxBuildStartupCommandArgs, 'cwd' | 'tmuxSessionName'>>;
   opencodeCapabilities?: Resolver<ResolversTypes['OpenCodeCapabilitiesResult'], ParentType, ContextType, Partial<QueryOpencodeCapabilitiesArgs>>;
   opencodeCommands?: Resolver<ResolversTypes['OpenCodeCommandsResult'], ParentType, ContextType, RequireFields<QueryOpencodeCommandsArgs, 'worktreePath'>>;
   opencodeMessages?: Resolver<ResolversTypes['OpenCodeMessagesResult'], ParentType, ContextType, RequireFields<QueryOpencodeMessagesArgs, 'sessionId' | 'worktreePath'>>;
@@ -3582,6 +3617,7 @@ export type Resolvers<ContextType = GraphQLContext> = ResolversObject<{
   JSON?: GraphQLScalarType;
   KanbanTicket?: KanbanTicketResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
+  OmxStartupCommandResult?: OmxStartupCommandResultResolvers<ContextType>;
   OpenCodeCapabilities?: OpenCodeCapabilitiesResolvers<ContextType>;
   OpenCodeCapabilitiesResult?: OpenCodeCapabilitiesResultResolvers<ContextType>;
   OpenCodeCommand?: OpenCodeCommandResolvers<ContextType>;

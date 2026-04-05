@@ -8,17 +8,28 @@ export function createTerminalOpsAdapter(): TerminalOpsApi {
     async create(
       worktreeId: string,
       cwd: string,
-      shell?: string
+      shell?: string,
+      startupCommand?: string
     ): Promise<{ success: boolean; cols?: number; rows?: number; error?: string }> {
       const data = await graphqlQuery<{
         terminalCreate: { success: boolean; cols?: number; rows?: number; error?: string }
       }>(
-        `mutation ($worktreeId: ID!, $cwd: String!, $shell: String) {
-          terminalCreate(worktreeId: $worktreeId, cwd: $cwd, shell: $shell) {
+        `mutation (
+          $worktreeId: ID!
+          $cwd: String!
+          $shell: String
+          $startupCommand: String
+        ) {
+          terminalCreate(
+            worktreeId: $worktreeId
+            cwd: $cwd
+            shell: $shell
+            startupCommand: $startupCommand
+          ) {
             success cols rows error
           }
         }`,
-        { worktreeId, cwd, shell }
+        { worktreeId, cwd, shell, startupCommand }
       )
       return data.terminalCreate
     },

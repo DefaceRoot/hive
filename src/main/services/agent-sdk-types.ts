@@ -156,3 +156,17 @@ export const OMX_CAPABILITIES: AgentSdkCapabilities = {
   supportsReconnect: true,
   supportsPartialStreaming: false
 }
+
+export const AGENT_SDK_CAPABILITIES: Record<AgentSdkId, AgentSdkCapabilities> = {
+  opencode: OPENCODE_CAPABILITIES,
+  'claude-code': CLAUDE_CODE_CAPABILITIES,
+  codex: CODEX_CAPABILITIES,
+  omx: OMX_CAPABILITIES,
+  terminal: TERMINAL_CAPABILITIES
+}
+
+export function isTerminalLikeAgentSdk(
+  sdkId: AgentSdkId | string | null | undefined
+): sdkId is 'omx' | 'terminal' {
+  return sdkId === 'terminal' || sdkId === 'omx'
+}

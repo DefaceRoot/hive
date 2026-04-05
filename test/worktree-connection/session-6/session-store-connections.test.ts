@@ -64,9 +64,13 @@ vi.mock('../../../src/renderer/src/stores/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
       selectedModel: null,
+      selectedModelByProvider: {},
+      defaultAgentSdk: 'opencode',
+      getModelForMode: vi.fn().mockReturnValue(null),
       updateSetting: vi.fn()
     })
-  }
+  },
+  resolveModelForSdk: vi.fn().mockReturnValue(null)
 }))
 
 // Set up window mocks

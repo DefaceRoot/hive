@@ -932,6 +932,15 @@ export class DatabaseService {
       .all(worktreeId) as Session[]
   }
 
+  getActiveSessionsByAgentSdk(agentSdk: Session['agent_sdk']): Session[] {
+    const db = this.getDb()
+    return db
+      .prepare(
+        "SELECT * FROM sessions WHERE agent_sdk = ? AND status = 'active' ORDER BY updated_at DESC"
+      )
+      .all(agentSdk) as Session[]
+  }
+
   updateSession(id: string, data: SessionUpdate): Session | null {
     const db = this.getDb()
     const existing = this.getSession(id)

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { Hammer, Map, Sparkles, Plus, GitBranch, Send, ChevronDown, Loader2, Search } from 'lucide-react'
+import { Hammer, Map, Plus, GitBranch, Send, ChevronDown, Loader2, Search } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -145,9 +145,9 @@ export function WorktreePickerModal({
   // ── SDK / Model resolution ──────────────────────────────────────
   const availableAgentSdks = useSettingsStore((s) => s.availableAgentSdks)
   const defaultAgentSdk = useSettingsStore((s) => s.defaultAgentSdk) ?? 'opencode'
-  const defaultSdkNormalized =
-    defaultAgentSdk === 'terminal' || defaultAgentSdk === 'omx' ? 'opencode' : defaultAgentSdk
-  const agentSdk = selectedSdk ?? defaultSdkNormalized
+  const agentSdk = selectedSdk ?? defaultAgentSdk
+  const modelSdk = agentSdk === 'terminal' || agentSdk === 'omx' ? 'opencode' : agentSdk
+  const supportsModelSelection = agentSdk !== 'omx'
 
   const autoResolvedModel = useMemo(() => {
     const settings = useSettingsStore.getState()
@@ -155,8 +155,8 @@ export function WorktreePickerModal({
     const modeModel = settings.getModelForMode(mode)
     if (modeModel) return modeModel
     // Priority 2: per-provider / global default
-    return resolveModelForSdk(agentSdk) ?? null
-  }, [mode, agentSdk])
+    return resolveModelForSdk(modelSdk) ?? null
+  }, [mode, modelSdk])
 
   // ── Count in-progress tickets per worktree ──────────────────────
   const ticketCountByWorktree = useMemo(() => {
@@ -329,8 +329,10 @@ export function WorktreePickerModal({
         const sessionAgentSdk = sessionResult.session.agent_sdk
 
         // Apply model override
-        const effectiveModel = selectedModel ?? autoResolvedModel ?? undefined
-        if (selectedModel) {
+        const effectiveModel = supportsModelSelection
+          ? selectedModel ?? autoResolvedModel ?? undefined
+          : undefined
+        if (supportsModelSelection && selectedModel) {
           await useSessionStore.getState().setSessionModel(sessionId, selectedModel)
         }
 
@@ -373,7 +375,10 @@ export function WorktreePickerModal({
 
         // Send prompt
         if (promptText.trim()) {
-          const skipPrefix = sessionAgentSdk === 'claude-code' || sessionAgentSdk === 'codex'
+          const skipPrefix =
+            sessionAgentSdk === 'claude-code' ||
+            sessionAgentSdk === 'codex' ||
+            sessionAgentSdk === 'omx'
           const modePrefix = mode === 'super-plan' ? SUPER_PLAN_MODE_PREFIX
             : mode === 'plan' && !skipPrefix ? PLAN_MODE_PREFIX
             : ''
@@ -472,8 +477,10 @@ export function WorktreePickerModal({
       const sessionAgentSdk = sessionResult.session.agent_sdk
 
       // Apply user's model override to the session if they explicitly picked one
-      const effectiveModel = selectedModel ?? autoResolvedModel ?? undefined
-      if (selectedModel) {
+      const effectiveModel = supportsModelSelection
+        ? selectedModel ?? autoResolvedModel ?? undefined
+        : undefined
+      if (supportsModelSelection && selectedModel) {
         await useSessionStore.getState().setSessionModel(sessionId, selectedModel)
       }
 
@@ -528,7 +535,10 @@ export function WorktreePickerModal({
 
       // Send the prompt — apply plan mode prefix for opencode SDK
       if (promptText.trim()) {
-        const skipPrefix = sessionAgentSdk === 'claude-code' || sessionAgentSdk === 'codex'
+        const skipPrefix =
+          sessionAgentSdk === 'claude-code' ||
+          sessionAgentSdk === 'codex' ||
+          sessionAgentSdk === 'omx'
         const modePrefix =
           mode === 'super-plan' ? SUPER_PLAN_MODE_PREFIX
           : mode === 'plan' && !skipPrefix ? PLAN_MODE_PREFIX
@@ -572,6 +582,7 @@ export function WorktreePickerModal({
     preAssignOnly,
     selectedModel,
     autoResolvedModel,
+    supportsModelSelection,
     isConnectionMode,
     connectionId
   ])
@@ -799,7 +810,12 @@ export function WorktreePickerModal({
               </label>
               {/* SDK toggle — only when 2+ SDKs are available */}
               {availableAgentSdks && (
-                [availableAgentSdks.opencode, availableAgentSdks.claude, availableAgentSdks.codex].filter(Boolean).length >= 2
+                [
+                  availableAgentSdks.opencode,
+                  availableAgentSdks.claude,
+                  availableAgentSdks.codex,
+                  availableAgentSdks.omx
+                ].filter(Boolean).length >= 2
               ) && (
                 <div className="flex gap-1.5" data-testid="sdk-toggle">
                   {availableAgentSdks.opencode && (
@@ -847,13 +863,34 @@ export function WorktreePickerModal({
                       Codex
                     </button>
                   )}
+                  {availableAgentSdks.omx && (
+                    <button
+                      type="button"
+                      data-testid="sdk-toggle-omx"
+                      onClick={() => handleSdkChange('omx')}
+                      className={cn(
+                        'px-2.5 py-1 rounded-md text-xs border transition-colors',
+                        agentSdk === 'omx'
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-muted/50 text-muted-foreground border-border hover:bg-accent/50'
+                      )}
+                    >
+                      OMX
+                    </button>
+                  )}
                 </div>
               )}
-              <ModelSelector
-                value={selectedModel ?? autoResolvedModel}
-                onChange={setSelectedModel}
-                agentSdkOverride={agentSdk}
-              />
+              {agentSdk === 'omx' ? (
+                <p className="text-xs text-muted-foreground">
+                  OMX manages model and reasoning inside the tmux-backed Codex session.
+                </p>
+              ) : (
+                <ModelSelector
+                  value={selectedModel ?? autoResolvedModel}
+                  onChange={setSelectedModel}
+                  agentSdkOverride={agentSdk}
+                />
+              )}
             </div>
           )}
 

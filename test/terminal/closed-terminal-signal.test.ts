@@ -22,6 +22,14 @@ function makeTerminalSession(id: string, worktreeId: string) {
   }
 }
 
+function makeOmxSession(id: string, worktreeId: string, tmuxSessionName = 'hive-omx-test') {
+  return {
+    ...makeTerminalSession(id, worktreeId),
+    opencode_session_id: tmuxSessionName,
+    agent_sdk: 'omx' as const
+  }
+}
+
 describe('closedTerminalSessionIds signal', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'db', {
@@ -36,6 +44,20 @@ describe('closedTerminalSessionIds signal', () => {
     Object.defineProperty(window, 'terminalOps', {
       value: {
         destroy: vi.fn().mockResolvedValue(undefined)
+      },
+      writable: true,
+      configurable: true
+    })
+    Object.defineProperty(window, 'omxOps', {
+      value: {
+        shutdownSession: vi.fn().mockResolvedValue({ success: true })
+      },
+      writable: true,
+      configurable: true
+    })
+    Object.defineProperty(window, 'omxOps', {
+      value: {
+        shutdownSession: vi.fn().mockResolvedValue({ success: true })
       },
       writable: true,
       configurable: true
@@ -107,6 +129,53 @@ describe('closedTerminalSessionIds signal', () => {
     })
 
     expect(useSessionStore.getState().closedTerminalSessionIds.size).toBe(0)
+  })
+
+  test('closeSession shuts down OMX tmux sessions before destroying the terminal PTY', async () => {
+    act(() => {
+      useSessionStore.setState({
+        sessionsByWorktree: new Map([['wt-1', [makeOmxSession('omx-1', 'wt-1', 'hive-omx-wt-1')]]]),
+        activeSessionId: 'omx-1',
+        tabOrderByWorktree: new Map([['wt-1', ['omx-1']]])
+      })
+    })
+
+    await act(async () => {
+      await useSessionStore.getState().closeSession('omx-1')
+    })
+
+    expect(window.omxOps.shutdownSession).toHaveBeenCalledWith('hive-omx-wt-1')
+    expect(window.terminalOps.destroy).toHaveBeenCalledWith('omx-1')
+    expect(useSessionStore.getState().closedTerminalSessionIds.has('omx-1')).toBe(true)
+  })
+
+  test('closeSession shuts down OMX tmux sessions before removing the tab', async () => {
+    act(() => {
+      useSessionStore.setState({
+        sessionsByWorktree: new Map([
+          [
+            'wt-1',
+            [
+              {
+                ...makeTerminalSession('omx-1', 'wt-1'),
+                opencode_session_id: 'hive-omx-session-1',
+                agent_sdk: 'omx' as const
+              }
+            ]
+          ]
+        ]),
+        activeSessionId: 'omx-1',
+        tabOrderByWorktree: new Map([['wt-1', ['omx-1']]])
+      })
+    })
+
+    await act(async () => {
+      await useSessionStore.getState().closeSession('omx-1')
+    })
+
+    expect(window.omxOps.shutdownSession).toHaveBeenCalledWith('hive-omx-session-1')
+    expect(window.terminalOps.destroy).toHaveBeenCalledWith('omx-1')
+    expect(useSessionStore.getState().closedTerminalSessionIds.has('omx-1')).toBe(true)
   })
 })
 

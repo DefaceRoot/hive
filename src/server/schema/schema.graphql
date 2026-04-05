@@ -94,6 +94,11 @@ type Query {
   systemAppPaths: AppPaths!
   systemDetectAgentSdks: AgentSdkDetection!
   systemServerStatus: ServerStatus!
+  omxBuildStartupCommand(
+    cwd: String!
+    tmuxSessionName: String!
+    launchArgs: [String!]
+  ): OmxStartupCommandResult!
 
   # --- Script ---
   scriptPort(cwd: String!): Int
@@ -216,10 +221,16 @@ type Mutation {
   scriptRunArchive(commands: [String!]!, cwd: String!): ScriptArchiveResult!
 
   # --- Terminal ---
-  terminalCreate(worktreeId: ID!, cwd: String!, shell: String): TerminalCreateResult!
+  terminalCreate(
+    worktreeId: ID!
+    cwd: String!
+    shell: String
+    startupCommand: String
+  ): TerminalCreateResult!
   terminalWrite(worktreeId: ID!, data: String!): Boolean!
   terminalResize(worktreeId: ID!, cols: Int!, rows: Int!): Boolean!
   terminalDestroy(worktreeId: ID!): Boolean!
+  omxShutdownSession(tmuxSessionName: String!): SuccessResult!
 
   # --- Connection ---
   createConnection(worktreeIds: [ID!]!): ConnectionCreateResult!

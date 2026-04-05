@@ -86,7 +86,30 @@ export const useConnectionStore = create<ConnectionState>()(
             set({ error: result.error || 'Failed to load connections', isLoading: false })
             return
           }
-          set({ connections: result.connections || [], isLoading: false })
+          const nextConnections = result.connections || []
+          const previousConnectionIds = new Set(get().connections.map((connection) => connection.id))
+          const nextConnectionIds = new Set(nextConnections.map((connection) => connection.id))
+          const removedConnectionIds = [...previousConnectionIds].filter(
+            (connectionId) => !nextConnectionIds.has(connectionId)
+          )
+
+          if (removedConnectionIds.length > 0) {
+            try {
+              const { useSessionStore } = await import('./useSessionStore')
+              for (const connectionId of removedConnectionIds) {
+                const sessionIds = (
+                  useSessionStore.getState().sessionsByConnection.get(connectionId) || []
+                ).map((session) => session.id)
+                for (const sessionId of sessionIds) {
+                  await useSessionStore.getState().closeSession(sessionId)
+                }
+              }
+            } catch {
+              // Best-effort cleanup — continue reloading connections
+            }
+          }
+
+          set({ connections: nextConnections, isLoading: false })
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           set({ error: message, isLoading: false })
@@ -119,10 +142,23 @@ export const useConnectionStore = create<ConnectionState>()(
 
       deleteConnection: async (connectionId: string) => {
         try {
+          const sessionIds = (get().connections.find((c) => c.id === connectionId)?.id
+            ? (
+                (await import('./useSessionStore')).useSessionStore
+                  .getState()
+                  .sessionsByConnection.get(connectionId) || []
+              ).map((session) => session.id)
+            : [])
           const result = await window.connectionOps.delete(connectionId)
           if (!result.success) {
             toast.error(result.error || 'Failed to delete connection')
             return
+          }
+          if (sessionIds.length > 0) {
+            const { useSessionStore } = await import('./useSessionStore')
+            for (const sessionId of sessionIds) {
+              await useSessionStore.getState().closeSession(sessionId)
+            }
           }
           // Remove from pinned list if pinned
           const { usePinnedStore } = await import('./usePinnedStore')
@@ -165,12 +201,23 @@ export const useConnectionStore = create<ConnectionState>()(
 
       removeMember: async (connectionId: string, worktreeId: string) => {
         try {
+          const existingConnection = get().connections.find((c) => c.id === connectionId)
+          const shouldDeleteConnection = existingConnection?.members.length === 1
           const result = await window.connectionOps.removeMember(connectionId, worktreeId)
           if (!result.success) {
             toast.error(`Failed to remove member: ${result.error || 'Unknown error'}`)
             return
           }
           if (result.connectionDeleted) {
+            if (shouldDeleteConnection) {
+              const { useSessionStore } = await import('./useSessionStore')
+              const sessionIds = (
+                useSessionStore.getState().sessionsByConnection.get(connectionId) || []
+              ).map((session) => session.id)
+              for (const sessionId of sessionIds) {
+                await useSessionStore.getState().closeSession(sessionId)
+              }
+            }
             // Connection was deleted because it was the last member
             // Remove from pinned list if pinned
             const { usePinnedStore } = await import('./usePinnedStore')
@@ -256,13 +303,17 @@ export const useConnectionStore = create<ConnectionState>()(
             toast.error(result.error || 'Failed to rename connection')
             return
           }
-          if (result.connection) {
-            set((state) => ({
-              connections: state.connections.map((c) =>
-                c.id === connectionId ? { ...c, custom_name: result.connection!.custom_name } : c
-              )
-            }))
-          }
+          set((state) => ({
+            connections: state.connections.map((c) =>
+              c.id === connectionId
+                ? {
+                    ...c,
+                    name: result.connection?.name ?? customName ?? c.name,
+                    custom_name: result.connection?.custom_name ?? customName
+                  }
+                : c
+            )
+          }))
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           toast.error(`Failed to rename connection: ${message}`)

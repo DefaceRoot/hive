@@ -1,6 +1,10 @@
 // src/server/resolvers/helpers/sdk-dispatch.ts
 import type { GraphQLContext } from '../../context'
-import type { AgentSdkId, AgentSdkImplementer } from '../../../main/services/agent-sdk-types'
+import {
+  isTerminalLikeAgentSdk,
+  type AgentSdkId,
+  type AgentSdkImplementer
+} from '../../../main/services/agent-sdk-types'
 
 /** Map GraphQL agentSdk enum value to internal AgentSdkId */
 export function mapGraphQLSdkToInternal(gqlSdk: string): AgentSdkId {
@@ -21,7 +25,7 @@ export async function withSdkDispatch<T>(
 ): Promise<T> {
   if (ctx.sdkManager && ctx.db) {
     const sdkId = ctx.db.getAgentSdkForSession(agentSessionId)
-    if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+    if (sdkId && sdkId !== 'opencode' && !isTerminalLikeAgentSdk(sdkId)) {
       return sdkFn(ctx.sdkManager.getImplementer(sdkId))
     }
   }
@@ -43,7 +47,7 @@ export async function withSdkDispatchByHiveSession<T>(
     if (
       session?.agent_sdk &&
       session.agent_sdk !== 'opencode' &&
-      session.agent_sdk !== 'terminal'
+      !isTerminalLikeAgentSdk(session.agent_sdk)
     ) {
       return sdkFn(ctx.sdkManager.getImplementer(session.agent_sdk))
     }

@@ -209,6 +209,12 @@ type TerminalCreateResult {
   error: String
 }
 
+type OmxStartupCommandResult {
+  success: Boolean!
+  command: String
+  error: String
+}
+
 # Script Results
 type ScriptRunResult {
   success: Boolean!

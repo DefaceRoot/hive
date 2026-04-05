@@ -1,14 +1,16 @@
 import type { Resolvers } from '../../__generated__/resolvers-types'
+import { killOmxTmuxSession } from '../../../main/services/omx-service'
 import { ptyService } from '../../../main/services/pty-service'
 import { getEventBus } from '../../event-bus'
 
 export const terminalMutationResolvers: Resolvers = {
   Mutation: {
-    terminalCreate: async (_parent, { worktreeId, cwd, shell }, _ctx) => {
+    terminalCreate: async (_parent, { worktreeId, cwd, shell, startupCommand }, _ctx) => {
       try {
         const { cols, rows } = ptyService.create(worktreeId, {
           cwd,
-          shell: shell || undefined
+          shell: shell || undefined,
+          startupCommand: startupCommand || undefined
         })
 
         // Wire PTY output to EventBus for GraphQL subscriptions.
@@ -61,6 +63,10 @@ export const terminalMutationResolvers: Resolvers = {
 
     terminalDestroy: async (_parent, { worktreeId }, _ctx) => {
       try {
+        const session = _ctx.db.getSession(worktreeId)
+        if (session?.agent_sdk === 'omx' && session.opencode_session_id) {
+          await killOmxTmuxSession(session.opencode_session_id)
+        }
         ptyService.destroy(worktreeId)
         return true
       } catch {

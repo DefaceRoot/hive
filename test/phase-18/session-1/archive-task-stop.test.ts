@@ -31,6 +31,14 @@ Object.defineProperty(window, 'scriptOps', {
   }
 })
 
+const mockTerminalDestroy = vi.fn()
+Object.defineProperty(window, 'terminalOps', {
+  writable: true,
+  value: {
+    destroy: mockTerminalDestroy
+  }
+})
+
 // Mock window.opencodeOps
 const mockAbort = vi.fn()
 Object.defineProperty(window, 'opencodeOps', {
@@ -135,6 +143,7 @@ describe('Session 1: Archive Task Stop', () => {
     mockDelete.mockReset()
     mockKill.mockReset()
     mockAbort.mockReset()
+    mockTerminalDestroy.mockReset()
   })
 
   test('archiveWorktree kills running script before archive', async () => {
@@ -447,6 +456,34 @@ describe('Session 1: Archive Task Stop', () => {
     expect(mockAbort).toHaveBeenCalledWith('/path/to/wt1', 'oc-active')
     expect(mockDelete).toHaveBeenCalled()
     expect(result.success).toBe(true)
+  })
+
+  test('archiveWorktree closes scoped sessions and destroys the worktree terminal before delete', async () => {
+    const worktree = makeWorktree()
+    const closeSession = vi.fn().mockResolvedValue({ success: true })
+    const terminalSession = makeSession({
+      id: 'session-terminal',
+      agent_sdk: 'omx' as const,
+      opencode_session_id: 'hive-omx-wt1'
+    })
+
+    useWorktreeStore.setState({
+      worktreesByProject: new Map([['proj1', [worktree]]])
+    })
+    useSessionStore.setState({
+      sessionsByWorktree: new Map([['wt1', [terminalSession]]]),
+      closeSession
+    })
+
+    mockDelete.mockResolvedValue({ success: true })
+
+    await useWorktreeStore
+      .getState()
+      .archiveWorktree('wt1', '/path/to/wt1', 'feature-branch', '/project')
+
+    expect(closeSession).toHaveBeenCalledWith('session-terminal')
+    expect(mockTerminalDestroy).toHaveBeenCalledWith('wt1')
+    expect(mockDelete).toHaveBeenCalled()
   })
 
   test('existing archive behavior unchanged - DB update and state removal', async () => {

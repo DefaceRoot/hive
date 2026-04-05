@@ -3,27 +3,12 @@ import { TerminalView } from '@/components/terminal/TerminalView'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { useWorktreeStore } from '@/stores/useWorktreeStore'
 import { useConnectionStore } from '@/stores/useConnectionStore'
+import { buildOmxStartupCommand } from '@shared/omx'
 
 interface SessionTerminalViewProps {
   sessionId: string
   /** Whether this terminal is currently visible (not hidden by CSS). Controls fit/focus and Ghostty frame sync. */
   isVisible?: boolean
-}
-
-function quoteShellArg(value: string): string {
-  return `'${value.replace(/'/g, `"'"'"`)}'`
-}
-
-function buildOmxStartupCommand(cwd: string, tmuxSessionName: string): string {
-  const quotedSession = quoteShellArg(tmuxSessionName)
-  const quotedCwd = quoteShellArg(cwd)
-  return [
-    `tmux has-session -t ${quotedSession} 2>/dev/null || tmux new-session -d -s ${quotedSession} -c ${quotedCwd} 'omx' '--madmax' '--high'`,
-    'tmux set-option -s extended-keys on >/dev/null 2>&1 || true',
-    'tmux set-option -s extended-keys-format csi-u >/dev/null 2>&1 || true',
-    `tmux set-option -t ${quotedSession} -g mouse on >/dev/null 2>&1 || true`,
-    `tmux attach-session -t ${quotedSession}`
-  ].join('; ')
 }
 
 /**
@@ -96,7 +81,7 @@ export function SessionTerminalView({
     }
 
     let cancelled = false
-    const fallbackCommand = buildOmxStartupCommand(cwd, tmuxSessionName)
+    const fallbackCommand = buildOmxStartupCommand({ cwd, tmuxSessionName })
     const buildCommand = window.omxOps?.buildStartupCommand
       ? window.omxOps.buildStartupCommand({ cwd, tmuxSessionName })
       : Promise.resolve({ success: true, command: fallbackCommand })

@@ -31,11 +31,12 @@ export function detectAgentSdks(): AgentSdkDetection {
       return false
     }
   }
+  const hasTmux = check('tmux')
   return {
     opencode: check('opencode'),
     claude: check('claude'),
     codex: check('codex'),
-    omx: check('omx')
+    omx: check('omx') && hasTmux
   }
 }
 

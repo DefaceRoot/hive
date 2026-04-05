@@ -88,6 +88,54 @@ function createMockSdkManager(codexImpl: AgentSdkImplementer): AgentSdkManager {
   } as unknown as AgentSdkManager
 }
 
+function createMockOmxImpl(): AgentSdkImplementer {
+  return {
+    id: 'omx',
+    capabilities: {
+      supportsUndo: false,
+      supportsRedo: false,
+      supportsCommands: false,
+      supportsPermissionRequests: false,
+      supportsQuestionPrompts: false,
+      supportsModelSelection: false,
+      supportsReconnect: true,
+      supportsPartialStreaming: false
+    },
+    connect: vi.fn().mockResolvedValue({ sessionId: 'hive-omx-session-1' }),
+    reconnect: vi.fn().mockResolvedValue({ success: true, sessionStatus: 'idle' }),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    cleanup: vi.fn().mockResolvedValue(undefined),
+    prompt: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn().mockResolvedValue(true),
+    getMessages: vi.fn().mockResolvedValue([]),
+    getAvailableModels: vi.fn().mockResolvedValue({}),
+    getModelInfo: vi.fn().mockResolvedValue(null),
+    setSelectedModel: vi.fn(),
+    getSessionInfo: vi.fn().mockResolvedValue({ revertMessageID: null, revertDiff: null }),
+    questionReply: vi.fn(),
+    questionReject: vi.fn(),
+    permissionReply: vi.fn(),
+    permissionList: vi.fn().mockResolvedValue([]),
+    undo: vi.fn(),
+    redo: vi.fn(),
+    listCommands: vi.fn().mockResolvedValue([]),
+    sendCommand: vi.fn(),
+    renameSession: vi.fn(),
+    setMainWindow: vi.fn()
+  }
+}
+
+function createMockOmxSdkManager(omxImpl: AgentSdkImplementer): AgentSdkManager {
+  return {
+    getImplementer: vi.fn((id: string) => {
+      if (id === 'omx') return omxImpl
+      throw new Error(`Unknown agent SDK: ${id}`)
+    }),
+    getCapabilities: vi.fn(),
+    cleanup: vi.fn()
+  } as unknown as AgentSdkManager
+}
+
 const mockEvent = {} as any
 
 describe('IPC opencode:prompt options routing', () => {
@@ -124,6 +172,35 @@ describe('IPC opencode:prompt options routing', () => {
       [{ type: 'text', text: 'hello' }],
       { providerID: 'codex', modelID: 'gpt-5.3-codex', variant: undefined },
       { codexFastMode: true }
+    )
+    expect(openCodeService.prompt).not.toHaveBeenCalled()
+  })
+
+  it('routes omx prompts through the OMX implementer instead of OpenCode', async () => {
+    const omxImpl = createMockOmxImpl()
+    const sdkManager = createMockOmxSdkManager(omxImpl)
+    const dbService = {
+      getAgentSdkForSession: vi.fn().mockReturnValue('omx'),
+      getWorktreeByPath: vi.fn().mockReturnValue(null)
+    } as any
+    const mainWindow = { isDestroyed: () => false, webContents: { send: vi.fn() } } as any
+
+    registerOpenCodeHandlers(mainWindow, sdkManager, dbService)
+
+    const handler = handlers.get('opencode:prompt')!
+    const result = await handler(mockEvent, {
+      worktreePath: '/project',
+      sessionId: 'hive-omx-session-1',
+      parts: [{ type: 'text', text: 'hello from hive' }]
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(omxImpl.prompt).toHaveBeenCalledWith(
+      '/project',
+      'hive-omx-session-1',
+      [{ type: 'text', text: 'hello from hive' }],
+      undefined,
+      undefined
     )
     expect(openCodeService.prompt).not.toHaveBeenCalled()
   })

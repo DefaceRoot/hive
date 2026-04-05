@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Resolvers } from '../../__generated__/resolvers-types'
+import { isTerminalLikeAgentSdk } from '../../../main/services/agent-sdk-types'
 import { openCodeService } from '../../../main/services/opencode-service'
 import { ClaudeCodeImplementer } from '../../../main/services/claude-code-implementer'
 import {
@@ -105,8 +106,11 @@ export const opencodeMutationResolvers: Resolvers = {
     opencodeSetModel: async (_parent, { input }, ctx) => {
       try {
         const { providerID, modelID, variant, agentSdk } = input
-        if (agentSdk && agentSdk !== 'opencode' && ctx.sdkManager) {
-          const internalId = mapGraphQLSdkToInternal(agentSdk)
+        const internalId = agentSdk ? mapGraphQLSdkToInternal(agentSdk) : null
+        if (internalId && isTerminalLikeAgentSdk(internalId)) {
+          return { success: true }
+        }
+        if (internalId && internalId !== 'opencode' && ctx.sdkManager) {
           const impl = ctx.sdkManager.getImplementer(internalId)
           impl.setSelectedModel({ providerID, modelID, variant: variant ?? undefined })
           return { success: true }

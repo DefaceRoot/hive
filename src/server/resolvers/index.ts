@@ -1,11 +1,13 @@
 import type { Resolvers } from '../__generated__/resolvers-types'
 import { dbQueryResolvers } from './query/db.resolvers'
 import { systemQueryResolvers } from './query/system.resolvers'
+import { omxQueryResolvers } from './query/omx.resolvers'
 import { settingsQueryResolvers } from './query/settings.resolvers'
 import { fileQueryResolvers } from './query/file.resolvers'
 import { fileTreeQueryResolvers } from './query/file-tree.resolvers'
 import { dbMutationResolvers } from './mutation/db.resolvers'
 import { systemMutationResolvers } from './mutation/system.resolvers'
+import { omxMutationResolvers } from './mutation/omx.resolvers'
 import { fileMutationResolvers } from './mutation/file.resolvers'
 import { projectQueryResolvers } from './query/project.resolvers'
 import { projectMutationResolvers } from './mutation/project.resolvers'
@@ -57,11 +59,13 @@ export function mergeResolvers(): Resolvers {
   return deepMerge(
     dbQueryResolvers,
     systemQueryResolvers,
+    omxQueryResolvers,
     settingsQueryResolvers,
     fileQueryResolvers,
     fileTreeQueryResolvers,
     dbMutationResolvers,
     systemMutationResolvers,
+    omxMutationResolvers,
     fileMutationResolvers,
     projectQueryResolvers,
     projectMutationResolvers,

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Resolvers } from '../../__generated__/resolvers-types'
 import { openCodeService } from '../../../main/services/opencode-service'
+import { isTerminalLikeAgentSdk } from '../../../main/services/agent-sdk-types'
 import { withSdkDispatch, mapGraphQLSdkToInternal } from '../helpers/sdk-dispatch'
 
 export const opencodeQueryResolvers: Resolvers = {
@@ -46,8 +47,11 @@ export const opencodeQueryResolvers: Resolvers = {
 
     opencodeModels: async (_parent, { agentSdk }, ctx) => {
       try {
-        if (agentSdk && agentSdk !== 'opencode' && ctx.sdkManager) {
-          const internalId = mapGraphQLSdkToInternal(agentSdk)
+        const internalId = agentSdk ? mapGraphQLSdkToInternal(agentSdk) : null
+        if (internalId && isTerminalLikeAgentSdk(internalId)) {
+          return { success: true, providers: {} }
+        }
+        if (internalId && internalId !== 'opencode' && ctx.sdkManager) {
           const impl = ctx.sdkManager.getImplementer(internalId)
           const providers = await impl.getAvailableModels()
           return { success: true, providers }
@@ -65,8 +69,11 @@ export const opencodeQueryResolvers: Resolvers = {
 
     opencodeModelInfo: async (_parent, { worktreePath, modelId, agentSdk }, ctx) => {
       try {
-        if (agentSdk && agentSdk !== 'opencode' && ctx.sdkManager) {
-          const internalId = mapGraphQLSdkToInternal(agentSdk)
+        const internalId = agentSdk ? mapGraphQLSdkToInternal(agentSdk) : null
+        if (internalId && isTerminalLikeAgentSdk(internalId)) {
+          return { success: false, error: 'Model selection is not supported for this session type' }
+        }
+        if (internalId && internalId !== 'opencode' && ctx.sdkManager) {
           const impl = ctx.sdkManager.getImplementer(internalId)
           const model = await impl.getModelInfo(worktreePath, modelId)
           if (!model) return { success: false, error: 'Model not found' }
@@ -87,7 +94,7 @@ export const opencodeQueryResolvers: Resolvers = {
       try {
         if (ctx.sdkManager && ctx.db && sessionId) {
           const sdkId = ctx.db.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal') {
+          if (sdkId && sdkId !== 'opencode' && !isTerminalLikeAgentSdk(sdkId)) {
             const impl = ctx.sdkManager.getImplementer(sdkId)
             const commands = await impl.listCommands(worktreePath)
             return { success: true, commands: commands as any[] }

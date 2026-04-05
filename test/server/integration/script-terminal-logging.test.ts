@@ -32,6 +32,8 @@ const mockGetAssignedPort = vi.hoisted(() => vi.fn())
 
 const mockCreateResponseLog = vi.hoisted(() => vi.fn())
 const mockAppendResponseLog = vi.hoisted(() => vi.fn())
+const mockBuildOmxStartupCommand = vi.hoisted(() => vi.fn())
+const mockKillOmxTmuxSession = vi.hoisted(() => vi.fn())
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -68,6 +70,11 @@ vi.mock('../../../src/main/services/port-registry', () => ({
 vi.mock('../../../src/main/services/response-logger', () => ({
   createResponseLog: mockCreateResponseLog,
   appendResponseLog: mockAppendResponseLog
+}))
+
+vi.mock('../../../src/main/services/omx-service', () => ({
+  buildOmxStartupCommand: mockBuildOmxStartupCommand,
+  killOmxTmuxSession: mockKillOmxTmuxSession
 }))
 
 // Mock worktree and branch watchers (imported transitively by other resolvers)
@@ -122,6 +129,8 @@ describe('Phase 7 — Script, Terminal, Logging Resolvers', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPtyService.destroy.mockImplementation(() => undefined)
+    mockKillOmxTmuxSession.mockResolvedValue(true)
     db = new MockDatabaseService()
     const server = createTestServer(db)
     execute = server.execute
@@ -379,6 +388,29 @@ describe('Phase 7 — Script, Terminal, Logging Resolvers', () => {
       })
     })
 
+    it('terminalCreate mutation passes startupCommand for omx-backed terminals', async () => {
+      mockPtyService.create.mockReturnValue({ cols: 100, rows: 30 })
+
+      const { data } = await execute(`
+        mutation {
+          terminalCreate(
+            worktreeId: "omx-session-1"
+            cwd: "/tmp/test"
+            startupCommand: "tmux attach-session -t 'hive-omx-session-1'"
+          ) {
+            success cols rows error
+          }
+        }
+      `)
+
+      expect(data.terminalCreate.success).toBe(true)
+      expect(mockPtyService.create).toHaveBeenCalledWith('omx-session-1', {
+        cwd: '/tmp/test',
+        shell: undefined,
+        startupCommand: "tmux attach-session -t 'hive-omx-session-1'"
+      })
+    })
+
     it('terminalCreate wires onData and onExit to EventBus', async () => {
       mockPtyService.create.mockReturnValue({ cols: 80, rows: 24 })
 
@@ -509,6 +541,71 @@ describe('Phase 7 — Script, Terminal, Logging Resolvers', () => {
         '/tmp/logs/sess-1.jsonl',
         { type: 'response', content: 'hello' }
       )
+    })
+
+    it('terminalDestroy shuts down omx tmux sessions for omx-backed session terminals', async () => {
+      const project = db.createProject({ name: 'Hive', path: '/tmp/hive' })
+      const session = db.createSession({
+        project_id: project.id,
+        name: 'OMX 1',
+        agent_sdk: 'omx',
+        opencode_session_id: 'hive-omx-session-1'
+      })
+
+      const { data } = await execute(`
+        mutation {
+          terminalDestroy(worktreeId: "${session.id}")
+        }
+      `)
+
+      expect(data.terminalDestroy).toBe(true)
+      expect(mockKillOmxTmuxSession).toHaveBeenCalledWith('hive-omx-session-1')
+      expect(mockPtyService.destroy).toHaveBeenCalledWith(session.id)
+    })
+  })
+
+  describe('OMX Resolvers', () => {
+    it('omxBuildStartupCommand query delegates to the omx service', async () => {
+      mockBuildOmxStartupCommand.mockReturnValue(
+        "tmux attach-session -t 'hive-omx-session-1'"
+      )
+
+      const { data } = await execute(`
+        query {
+          omxBuildStartupCommand(
+            cwd: "/tmp/project"
+            tmuxSessionName: "hive-omx-session-1"
+            launchArgs: ["--madmax", "--high"]
+          ) {
+            success command error
+          }
+        }
+      `)
+
+      expect(data.omxBuildStartupCommand.success).toBe(true)
+      expect(data.omxBuildStartupCommand.command).toBe(
+        "tmux attach-session -t 'hive-omx-session-1'"
+      )
+      expect(mockBuildOmxStartupCommand).toHaveBeenCalledWith({
+        cwd: '/tmp/project',
+        tmuxSessionName: 'hive-omx-session-1',
+        launchArgs: ['--madmax', '--high']
+      })
+    })
+
+    it('omxShutdownSession mutation delegates to tmux cleanup', async () => {
+      mockKillOmxTmuxSession.mockResolvedValue(true)
+
+      const { data } = await execute(`
+        mutation {
+          omxShutdownSession(tmuxSessionName: "hive-omx-session-1") {
+            success error
+          }
+        }
+      `)
+
+      expect(data.omxShutdownSession.success).toBe(true)
+      expect(mockKillOmxTmuxSession).toHaveBeenCalledWith('hive-omx-session-1')
     })
   })
 })

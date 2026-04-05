@@ -6,6 +6,7 @@ import { createOpenCodeOpsAdapter } from './graphql/adapters/opencode-ops'
 import { createGitOpsAdapter } from './graphql/adapters/git-ops'
 import { createFileTreeOpsAdapter } from './graphql/adapters/file-tree-ops'
 import { createTerminalOpsAdapter } from './graphql/adapters/terminal-ops'
+import { createOmxOpsAdapter } from './graphql/adapters/omx-ops'
 import { createWorktreeOpsAdapter } from './graphql/adapters/worktree-ops'
 import { createProjectOpsAdapter } from './graphql/adapters/project-ops'
 import { createConnectionOpsAdapter } from './graphql/adapters/connection-ops'
@@ -43,6 +44,7 @@ export function installTransport(): TransportResult {
   window.gitOps = createGitOpsAdapter()
   window.fileTreeOps = createFileTreeOpsAdapter()
   window.terminalOps = createTerminalOpsAdapter()
+  window.omxOps = createOmxOpsAdapter()
   window.worktreeOps = createWorktreeOpsAdapter()
   window.projectOps = createProjectOpsAdapter()
   window.connectionOps = createConnectionOpsAdapter()

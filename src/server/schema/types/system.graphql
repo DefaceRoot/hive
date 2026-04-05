@@ -18,3 +18,9 @@ type AgentSdkDetection {
   codex: Boolean!
   omx: Boolean!
 }
+
+type OmxStartupCommandResult {
+  success: Boolean!
+  command: String
+  error: String
+}

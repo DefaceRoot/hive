@@ -38,6 +38,7 @@ import { notificationService } from './services/notification-service'
 import { updaterService } from './services/updater'
 import { ClaudeCodeImplementer } from './services/claude-code-implementer'
 import { CodexImplementer } from './services/codex-implementer'
+import { OmxImplementer } from './services/omx-implementer'
 import { AgentSdkManager } from './services/agent-sdk-manager'
 import { resolveClaudeBinaryPath } from './services/claude-binary-resolver'
 import type { AgentSdkImplementer } from './services/agent-sdk-types'
@@ -46,6 +47,7 @@ import { registerTicketImportHandlers } from './ipc/ticket-import-handlers'
 import { initTicketProviderManager, GitHubProvider, JiraProvider } from './services/ticket-providers'
 import { detectEditors, detectTerminals } from './services/settings-detection'
 import { spawnDetached } from './services/spawn-detached'
+import { cleanupOmxTmuxSessions } from './services/omx-service'
 import { getCliArgs, getFlagValue, getNumericFlagValue } from './services/cli-args'
 import {
   buildHiveServerScript,
@@ -58,6 +60,17 @@ import {
 const log = createLogger({ component: 'Main' })
 
 const appStartTime = Date.now()
+
+async function cleanupActiveOmxTmuxSessions(): Promise<void> {
+  try {
+    const activeOmxSessions = getDatabase()
+      .getActiveSessionsByAgentSdk('omx')
+      .map((session) => session.opencode_session_id)
+    await cleanupOmxTmuxSessions(activeOmxSessions)
+  } catch {
+    // Best-effort cleanup — continue shutdown/window teardown
+  }
+}
 
 // Parse CLI flags
 const cliArgs = getCliArgs(process.argv, { isPackaged: app.isPackaged })
@@ -208,6 +221,10 @@ function createWindow(): void {
   mainWindow.on('resize', () => saveWindowBounds(mainWindow))
   mainWindow.on('move', () => saveWindowBounds(mainWindow))
   mainWindow.on('close', () => saveWindowBounds(mainWindow))
+  mainWindow.on('closed', () => {
+    cleanupTerminals()
+    void cleanupActiveOmxTmuxSessions()
+  })
 
   // Intercept Cmd+T (macOS) / Ctrl+T (Windows/Linux) before Chromium consumes it
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -762,7 +779,9 @@ app.whenReady().then(async () => {
     } satisfies AgentSdkImplementer
     const codexImpl = new CodexImplementer()
     codexImpl.setDatabaseService(getDatabase())
-    const sdkManager = new AgentSdkManager([openCodePlaceholder, claudeImpl, codexImpl])
+    const omxImpl = new OmxImplementer()
+    omxImpl.setDatabaseService(getDatabase())
+    const sdkManager = new AgentSdkManager([openCodePlaceholder, claudeImpl, codexImpl, omxImpl])
     sdkManager.setMainWindow(mainWindow)
 
     const databaseService = getDatabase()
@@ -816,8 +835,10 @@ app.on('window-all-closed', () => {
 app.on('will-quit', async () => {
   // Cleanup updater timers
   updaterService.cleanup()
+  // Cleanup tmux-backed OMX sessions before database shutdown
+  await cleanupActiveOmxTmuxSessions()
   // Cleanup terminal PTYs
-  cleanupTerminals()
+  await cleanupTerminals()
   // Cleanup running scripts
   cleanupScripts()
   // Cleanup file tree watchers

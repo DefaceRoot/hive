@@ -41,7 +41,7 @@ interface ModelSelectorProps {
   value?: { providerID: string; modelID: string; variant?: string } | null
   onChange?: (model: { providerID: string; modelID: string; variant?: string }) => void
   // Override the SDK used for model listing (e.g. force 'opencode' in settings when defaultAgentSdk is 'terminal')
-  agentSdkOverride?: 'opencode' | 'claude-code' | 'codex'
+  agentSdkOverride?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
 }
 
 export function ModelSelector({
@@ -65,8 +65,9 @@ export function ModelSelector({
   })
   const defaultAgentSdk = useSettingsStore((s) => s.defaultAgentSdk)
   const rawAgentSdk = agentSdkOverride ?? session?.agent_sdk ?? defaultAgentSdk ?? 'opencode'
-  // Terminal SDK has no models — fall back to opencode for model listing
-  const agentSdk = rawAgentSdk === 'terminal' ? 'opencode' : rawAgentSdk
+  // Terminal-like SDKs have no model backend — fall back to opencode for listing/UI defaults.
+  const agentSdk =
+    rawAgentSdk === 'terminal' || rawAgentSdk === 'omx' ? 'opencode' : rawAgentSdk
   const globalModel = useSettingsStore((state) => resolveModelForSdk(agentSdk, state))
   const sessionModel =
     session?.model_id && session.model_provider_id

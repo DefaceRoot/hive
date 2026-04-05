@@ -124,6 +124,7 @@ enum AgentSdk {
   opencode
   claude_code
   codex
+  omx
   terminal
 }
 

@@ -2,7 +2,9 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { ptyService } from '../services/pty-service'
 import { ghosttyService } from '../services/ghostty-service'
 import { parseGhosttyConfig } from '../services/ghostty-config'
+import { killOmxTmuxSession } from '../services/omx-service'
 import { createLogger } from '../services/logger'
+import { getDatabase } from '../db'
 import { getEventBus } from '../../server/event-bus'
 
 const log = createLogger({ component: 'TerminalHandlers' })
@@ -18,6 +20,17 @@ const listenerCleanups = new Map<string, { removeData: () => void; removeExit: (
 // Batching with setImmediate collects all data from the current I/O phase into one IPC message.
 const dataBuffers = new Map<string, string>()
 const flushScheduled = new Set<string>()
+
+async function cleanupOmxSessionForTerminalId(terminalId: string): Promise<void> {
+  try {
+    const session = getDatabase().getSession(terminalId)
+    if (session?.agent_sdk === 'omx' && session.opencode_session_id) {
+      await killOmxTmuxSession(session.opencode_session_id)
+    }
+  } catch {
+    // Best-effort cleanup — db may be unavailable during shutdown
+  }
+}
 
 export function registerTerminalHandlers(mainWindow: BrowserWindow): void {
   // Set main window reference on the Ghostty service
@@ -99,6 +112,7 @@ export function registerTerminalHandlers(mainWindow: BrowserWindow): void {
           }
           // Clean up listener tracking on exit
           listenerCleanups.delete(worktreeId)
+          void cleanupOmxSessionForTerminalId(worktreeId)
         })
 
         listenerCleanups.set(worktreeId, { removeData, removeExit })
@@ -129,7 +143,7 @@ export function registerTerminalHandlers(mainWindow: BrowserWindow): void {
   })
 
   // Destroy a PTY
-  ipcMain.handle('terminal:destroy', (_event, worktreeId: string) => {
+  ipcMain.handle('terminal:destroy', async (_event, worktreeId: string) => {
     log.info('IPC: terminal:destroy', { worktreeId })
     // Clean up listener tracking
     const cleanup = listenerCleanups.get(worktreeId)
@@ -142,6 +156,7 @@ export function registerTerminalHandlers(mainWindow: BrowserWindow): void {
     dataBuffers.delete(worktreeId)
     flushScheduled.delete(worktreeId)
     ptyService.destroy(worktreeId)
+    await cleanupOmxSessionForTerminalId(worktreeId)
   })
 
   // Get Ghostty config for terminal theming
@@ -278,8 +293,9 @@ export function registerTerminalHandlers(mainWindow: BrowserWindow): void {
   log.info('Terminal IPC handlers registered')
 }
 
-export function cleanupTerminals(): void {
+export async function cleanupTerminals(): Promise<void> {
   log.info('Cleaning up all terminals')
+  await Promise.allSettled(ptyService.getIds().map((terminalId) => cleanupOmxSessionForTerminalId(terminalId)))
   // Clean up all listener tracking
   for (const [, cleanup] of listenerCleanups) {
     cleanup.removeData()

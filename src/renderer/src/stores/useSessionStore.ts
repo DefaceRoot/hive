@@ -4,6 +4,7 @@ import type { SelectedModel } from './useSettingsStore'
 import { useGitStore } from './useGitStore'
 import { useWorktreeStore } from './useWorktreeStore'
 import { notifyKanbanSessionSync } from './store-coordination'
+import { buildOmxTmuxSessionName } from '@shared/omx'
 
 // Session mode type
 export type SessionMode = 'build' | 'plan' | 'super-plan'
@@ -170,13 +171,6 @@ function findSessionScope(
 
 function isTerminalLikeAgentSdk(agentSdk: Session['agent_sdk']): boolean {
   return agentSdk === 'terminal' || agentSdk === 'omx'
-}
-
-function createOmxTmuxSessionId(prefix: 'wt' | 'conn'): string {
-  const suffix = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
-    .replace(/[^a-zA-Z0-9_-]/g, '')
-    .slice(0, 12)
-  return `hive-omx-${prefix}-${suffix}`
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -363,10 +357,7 @@ export const useSessionStore = create<SessionState>()(
 
           const existingSessions = get().sessionsByWorktree.get(worktreeId) || []
           const sessionNumber = existingSessions.length + 1
-          const omxSessionId =
-            defaultAgentSdk === 'omx' ? createOmxTmuxSessionId('wt') : null
-
-          const session = await window.db.session.create({
+          const createdSession = await window.db.session.create({
             worktree_id: worktreeId,
             project_id: projectId,
             name:
@@ -375,7 +366,7 @@ export const useSessionStore = create<SessionState>()(
                 : defaultAgentSdk === 'terminal'
                   ? `Terminal ${sessionNumber}`
                   : `Session ${sessionNumber}`,
-            opencode_session_id: omxSessionId,
+            opencode_session_id: null,
             agent_sdk: defaultAgentSdk,
             mode: initialMode || 'build',
             ...(defaultModel
@@ -386,6 +377,16 @@ export const useSessionStore = create<SessionState>()(
                 }
               : {})
           })
+          const session =
+            defaultAgentSdk === 'omx'
+              ? ((await window.db.session.update(createdSession.id, {
+                  opencode_session_id: buildOmxTmuxSessionName(createdSession.id)
+                })) ??
+                {
+                  ...createdSession,
+                  opencode_session_id: buildOmxTmuxSessionName(createdSession.id)
+                })
+              : createdSession
 
           // Clear file viewer so the new session takes focus in MainPane
           const { useFileViewerStore } = await import('./useFileViewerStore')
@@ -1557,10 +1558,7 @@ export const useSessionStore = create<SessionState>()(
           const isTerminal = defaultAgentSdk === 'terminal'
           const existingSessions = get().sessionsByConnection.get(connectionId) || []
           const sessionNumber = existingSessions.length + 1
-          const omxSessionId =
-            defaultAgentSdk === 'omx' ? createOmxTmuxSessionId('conn') : null
-
-          const session = await window.db.session.create({
+          const createdSession = await window.db.session.create({
             worktree_id: null,
             project_id: projectId,
             connection_id: connectionId,
@@ -1570,7 +1568,7 @@ export const useSessionStore = create<SessionState>()(
                 : isTerminal
                   ? `Terminal ${sessionNumber}`
                   : `Session ${sessionNumber}`,
-            opencode_session_id: omxSessionId,
+            opencode_session_id: null,
             agent_sdk: defaultAgentSdk,
             ...(defaultModel
               ? {
@@ -1580,6 +1578,16 @@ export const useSessionStore = create<SessionState>()(
                 }
               : {})
           })
+          const session =
+            defaultAgentSdk === 'omx'
+              ? ((await window.db.session.update(createdSession.id, {
+                  opencode_session_id: buildOmxTmuxSessionName(createdSession.id)
+                })) ??
+                {
+                  ...createdSession,
+                  opencode_session_id: buildOmxTmuxSessionName(createdSession.id)
+                })
+              : createdSession
 
           set((state) => {
             const newSessionsMap = new Map(state.sessionsByConnection)

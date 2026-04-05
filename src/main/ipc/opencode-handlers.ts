@@ -4,7 +4,7 @@ import { createLogger } from '../services/logger'
 import { telemetryService } from '../services/telemetry-service'
 import type { DatabaseService } from '../db/database'
 import type { AgentSdkManager } from '../services/agent-sdk-manager'
-import type { PromptOptions } from '../services/agent-sdk-types'
+import { isTerminalLikeAgentSdk, type PromptOptions } from '../services/agent-sdk-types'
 import { ClaudeCodeImplementer } from '../services/claude-code-implementer'
 import { CodexImplementer } from '../services/codex-implementer'
 
@@ -16,6 +16,13 @@ const log = createLogger({ component: 'OpenCodeHandlers' })
 // SDK ID after the first prompt — using the session ID would cause re-injection
 // when the ID changes.
 const injectedWorktrees = new Set<string>()
+
+
+function shouldDispatchToImplementer(
+  sdkId: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal' | null | undefined
+): sdkId is 'claude-code' | 'codex' | 'omx' {
+  return !!sdkId && sdkId !== 'opencode' && sdkId !== 'terminal'
+}
 
 export function registerOpenCodeHandlers(
   mainWindow: BrowserWindow,
@@ -37,10 +44,10 @@ export function registerOpenCodeHandlers(
         if (sdkManager && dbService) {
           const session = dbService.getSession(hiveSessionId)
           // Terminal-like sessions have no AI backend — short-circuit
-          if (session?.agent_sdk === 'terminal' || session?.agent_sdk === 'omx') {
+          if (session?.agent_sdk === 'terminal') {
             return { success: true, sessionId: hiveSessionId }
           }
-          if (session?.agent_sdk && session.agent_sdk !== 'opencode') {
+          if (shouldDispatchToImplementer(session?.agent_sdk)) {
             const impl = sdkManager.getImplementer(session.agent_sdk)
             const result = await impl.connect(worktreePath, hiveSessionId)
             telemetryService.track('session_started', { agent_sdk: session.agent_sdk })
@@ -71,10 +78,10 @@ export function registerOpenCodeHandlers(
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
           // Terminal-like sessions have no AI backend — short-circuit
-          if (sdkId === 'terminal' || sdkId === 'omx') {
+          if (sdkId === 'terminal') {
             return { success: true, sessionStatus: 'idle' as const }
           }
-          if (sdkId && sdkId !== 'opencode') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.reconnect(worktreePath, opencodeSessionId, hiveSessionId)
             return result
@@ -218,7 +225,7 @@ export function registerOpenCodeHandlers(
       // SDK-aware dispatch: route non-OpenCode sessions to their implementer
       if (sdkManager && dbService) {
         const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-        if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+        if (shouldDispatchToImplementer(sdkId)) {
           const impl = sdkManager.getImplementer(sdkId)
           await impl.prompt(worktreePath, opencodeSessionId, messageOrParts, model, options)
           telemetryService.track('prompt_sent', { agent_sdk: sdkId })
@@ -248,7 +255,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             await impl.disconnect(worktreePath, opencodeSessionId)
             return { success: true }
@@ -270,9 +277,15 @@ export function registerOpenCodeHandlers(
   // Get available models from all configured providers
   ipcMain.handle(
     'opencode:models',
-    async (_event, opts?: { agentSdk?: 'opencode' | 'claude-code' | 'codex' }) => {
+    async (
+      _event,
+      opts?: { agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal' }
+    ) => {
       log.info('IPC: opencode:models', { agentSdk: opts?.agentSdk })
       try {
+        if (opts?.agentSdk && isTerminalLikeAgentSdk(opts.agentSdk)) {
+          return { success: true, providers: {} }
+        }
         if (opts?.agentSdk && opts.agentSdk !== 'opencode' && sdkManager) {
           const impl = sdkManager.getImplementer(opts.agentSdk)
           if (impl) {
@@ -303,7 +316,7 @@ export function registerOpenCodeHandlers(
         providerID: string
         modelID: string
         variant?: string
-        agentSdk?: 'opencode' | 'claude-code' | 'codex'
+        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
       } | null
     ) => {
       log.info('IPC: opencode:setModel', {
@@ -318,6 +331,9 @@ export function registerOpenCodeHandlers(
         }
 
         // Handle non-null model
+        if (model.agentSdk && isTerminalLikeAgentSdk(model.agentSdk)) {
+          return { success: true }
+        }
         if (model.agentSdk && model.agentSdk !== 'opencode' && sdkManager) {
           const impl = sdkManager.getImplementer(model.agentSdk)
           if (impl) {
@@ -347,10 +363,17 @@ export function registerOpenCodeHandlers(
         worktreePath,
         modelId,
         agentSdk
-      }: { worktreePath: string; modelId: string; agentSdk?: 'opencode' | 'claude-code' | 'codex' }
+      }: {
+        worktreePath: string
+        modelId: string
+        agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
+      }
     ) => {
       log.info('IPC: opencode:modelInfo', { worktreePath, modelId, agentSdk })
       try {
+        if (agentSdk && isTerminalLikeAgentSdk(agentSdk)) {
+          return { success: false, error: 'Model selection is not supported for this session type' }
+        }
         if (agentSdk && agentSdk !== 'opencode' && sdkManager) {
           const impl = sdkManager.getImplementer(agentSdk)
           if (impl) {
@@ -386,7 +409,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.getSessionInfo(worktreePath, sessionId)
             return { success: true, ...result }
@@ -414,7 +437,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService && sessionId) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             const commands = await impl.listCommands(worktreePath)
             return { success: true, commands }
@@ -469,7 +492,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             await impl.sendCommand(worktreePath, sessionId, command, args)
             return { success: true }
@@ -497,7 +520,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.undo(worktreePath, sessionId, '')
             return { success: true, ...(result as Record<string, unknown>) }
@@ -526,7 +549,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(sessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.redo(worktreePath, sessionId, '')
             return { success: true, ...(result as Record<string, unknown>) }
@@ -811,7 +834,7 @@ export function registerOpenCodeHandlers(
         approved,
         remember,
         pattern,
-        worktreePath,
+        worktreePath: _worktreePath,
         patterns
       }: {
         requestId: string
@@ -866,7 +889,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             await impl.renameSession(worktreePath ?? '', opencodeSessionId, title)
             return { success: true }
@@ -919,7 +942,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             const messages = await impl.getMessages(worktreePath, opencodeSessionId)
             return { success: true, messages }
@@ -948,7 +971,7 @@ export function registerOpenCodeHandlers(
         // SDK-aware dispatch: route non-OpenCode sessions to their implementer
         if (sdkManager && dbService) {
           const sdkId = dbService.getAgentSdkForSession(opencodeSessionId)
-          if (sdkId && sdkId !== 'opencode' && sdkId !== 'terminal' && sdkId !== 'omx') {
+          if (shouldDispatchToImplementer(sdkId)) {
             const impl = sdkManager.getImplementer(sdkId)
             const result = await impl.abort(worktreePath, opencodeSessionId)
             return { success: result }

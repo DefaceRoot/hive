@@ -1,5 +1,10 @@
 import type { BrowserWindow } from 'electron'
-import type { AgentSdkId, AgentSdkCapabilities, AgentSdkImplementer } from './agent-sdk-types'
+import {
+  AGENT_SDK_CAPABILITIES,
+  type AgentSdkId,
+  type AgentSdkCapabilities,
+  type AgentSdkImplementer
+} from './agent-sdk-types'
 import { createLogger } from './logger'
 
 const log = createLogger({ component: 'AgentSdkManager' })
@@ -26,7 +31,15 @@ export class AgentSdkManager {
   }
 
   getCapabilities(sdkId: AgentSdkId): AgentSdkCapabilities {
-    return this.getImplementer(sdkId).capabilities
+    const impl = this.implementers.get(sdkId)
+    if (impl) {
+      return impl.capabilities
+    }
+    const fallback = AGENT_SDK_CAPABILITIES[sdkId]
+    if (!fallback) {
+      throw new Error(`Unknown agent SDK: "${sdkId}"`)
+    }
+    return fallback
   }
 
   setMainWindow(window: BrowserWindow): void {
