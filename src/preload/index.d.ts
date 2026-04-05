@@ -915,12 +915,12 @@ declare global {
     ghosttyShutdown: () => Promise<void>
   }
   omxOps: {
-    status: (cwd: string) => Promise<{
-      success: boolean
-      modes: Array<{ mode: string; active: boolean; phase: string }>
-      error?: string
-    }>
-    killSession: (tmuxSessionName: string) => Promise<{ success: boolean; error?: string }>
+    buildStartupCommand: (options: {
+      cwd: string
+      tmuxSessionName: string
+      launchArgs?: string[]
+    }) => Promise<{ success: boolean; command?: string; error?: string }>
+    shutdownSession: (tmuxSessionName: string) => Promise<{ success: boolean; error?: string }>
   }
   gitOps: {
       // Get file statuses for a worktree

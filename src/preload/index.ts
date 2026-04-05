@@ -1638,14 +1638,15 @@ const terminalOps = {
 }
 
 const omxOps = {
-  status: (cwd: string): Promise<{
-    success: boolean
-    modes: Array<{ mode: string; active: boolean; phase: string }>
-    error?: string
-  }> => ipcRenderer.invoke('omx:status', cwd),
+  buildStartupCommand: (options: {
+    cwd: string
+    tmuxSessionName: string
+    launchArgs?: string[]
+  }): Promise<{ success: boolean; command?: string; error?: string }> =>
+    ipcRenderer.invoke('omx:buildStartupCommand', options),
 
-  killSession: (tmuxSessionName: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('omx:killSession', tmuxSessionName)
+  shutdownSession: (tmuxSessionName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('omx:shutdownSession', { tmuxSessionName })
 }
 
 const updaterOps = {

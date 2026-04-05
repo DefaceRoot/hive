@@ -10,6 +10,22 @@ interface SessionTerminalViewProps {
   isVisible?: boolean
 }
 
+function quoteShellArg(value: string): string {
+  return `'${value.replace(/'/g, `"'"'"`)}'`
+}
+
+function buildOmxStartupCommand(cwd: string, tmuxSessionName: string): string {
+  const quotedSession = quoteShellArg(tmuxSessionName)
+  const quotedCwd = quoteShellArg(cwd)
+  return [
+    `tmux has-session -t ${quotedSession} 2>/dev/null || tmux new-session -d -s ${quotedSession} -c ${quotedCwd} 'omx' '--madmax' '--high'`,
+    'tmux set-option -s extended-keys on >/dev/null 2>&1 || true',
+    'tmux set-option -s extended-keys-format csi-u >/dev/null 2>&1 || true',
+    `tmux set-option -t ${quotedSession} -g mouse on >/dev/null 2>&1 || true`,
+    `tmux attach-session -t ${quotedSession}`
+  ].join('; ')
+}
+
 /**
  * Renders a full-size terminal for "terminal" agent_sdk sessions.
  * Uses the session ID as the PTY key (not worktree ID) to avoid
@@ -69,6 +85,35 @@ export function SessionTerminalView({
   }, [resolvedCwd])
 
   const cwd = resolvedCwd || lastKnownCwd
+  const [startupCommand, setStartupCommand] = useState<string | undefined>(undefined)
+  const isOmxSession = session?.agent_sdk === 'omx'
+  const tmuxSessionName = isOmxSession ? session?.opencode_session_id ?? null : null
+
+  useEffect(() => {
+    if (!isOmxSession || !cwd || !tmuxSessionName) {
+      setStartupCommand(undefined)
+      return
+    }
+
+    let cancelled = false
+    const fallbackCommand = buildOmxStartupCommand(cwd, tmuxSessionName)
+    const buildCommand = window.omxOps?.buildStartupCommand
+      ? window.omxOps.buildStartupCommand({ cwd, tmuxSessionName })
+      : Promise.resolve({ success: true, command: fallbackCommand })
+
+    buildCommand
+      .then((result) => {
+        if (cancelled) return
+        setStartupCommand(result.success ? result.command : fallbackCommand)
+      })
+      .catch(() => {
+        if (!cancelled) setStartupCommand(fallbackCommand)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [cwd, isOmxSession, tmuxSessionName])
 
   if (!cwd) {
     return (
@@ -78,9 +123,22 @@ export function SessionTerminalView({
     )
   }
 
+  if (isOmxSession && !startupCommand) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-muted-foreground">
+        <p className="text-sm">Preparing OMX terminal...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0" data-testid="session-terminal-view">
-      <TerminalView worktreeId={sessionId} cwd={cwd} isVisible={isVisible} />
+      <TerminalView
+        worktreeId={sessionId}
+        cwd={cwd}
+        startupCommand={startupCommand}
+        isVisible={isVisible}
+      />
     </div>
   )
 }

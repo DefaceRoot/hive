@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { OmxSessionView } from '../../src/renderer/src/components/sessions/OmxSessionView'
+import { SessionTerminalView } from '../../src/renderer/src/components/sessions/SessionTerminalView'
 import { useConnectionStore } from '../../src/renderer/src/stores/useConnectionStore'
 import { useSessionStore } from '../../src/renderer/src/stores/useSessionStore'
 import { useWorktreeStore } from '../../src/renderer/src/stores/useWorktreeStore'
@@ -10,11 +9,6 @@ const mockBuildStartupCommand = vi.fn().mockResolvedValue({
   success: true,
   command: "tmux attach-session -t 'hive-omx-test'"
 })
-const mockStatus = vi.fn().mockResolvedValue({
-  success: true,
-  modes: [{ mode: 'ralph', active: true, phase: 'running' }]
-})
-const mockTerminalWrite = vi.fn()
 
 vi.mock('@/components/terminal/TerminalView', () => ({
   TerminalView: ({
@@ -34,7 +28,7 @@ vi.mock('@/components/terminal/TerminalView', () => ({
   )
 }))
 
-describe('OmxSessionView', () => {
+describe('SessionTerminalView OMX launch', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
@@ -43,16 +37,7 @@ describe('OmxSessionView', () => {
       writable: true,
       value: {
         buildStartupCommand: mockBuildStartupCommand,
-        status: mockStatus,
         shutdownSession: vi.fn()
-      }
-    })
-
-    Object.defineProperty(window, 'terminalOps', {
-      configurable: true,
-      writable: true,
-      value: {
-        write: mockTerminalWrite
       }
     })
 
@@ -116,27 +101,20 @@ describe('OmxSessionView', () => {
     })
   })
 
-  test('builds the tmux startup command and renders terminal metadata', async () => {
-    render(<OmxSessionView sessionId="omx-1" isVisible />)
+  test('launches OMX inside the terminal surface with the resolved startup command', async () => {
+    render(<SessionTerminalView sessionId="omx-1" isVisible />)
 
     expect(await screen.findByTestId('terminal-view-omx-1')).toHaveAttribute(
       'data-cwd',
       '/tmp/hive-omx-project'
     )
-    expect(screen.getByText(/tmux: hive-omx-test/i)).toBeInTheDocument()
-    expect(mockStatus).toHaveBeenCalledWith('/tmp/hive-omx-project')
-  })
-
-  test('quick actions and composer send commands into the OMX terminal', async () => {
-    const user = userEvent.setup()
-    render(<OmxSessionView sessionId="omx-1" isVisible />)
-
-    await user.click(await screen.findByTestId('omx-quick-plan'))
-    expect(mockTerminalWrite).toHaveBeenCalledWith('omx-1', '$plan\r')
-
-    await user.type(screen.getByTestId('omx-prompt-input'), 'Ship the integration')
-    await user.click(screen.getByRole('button', { name: /send/i }))
-
-    expect(mockTerminalWrite).toHaveBeenCalledWith('omx-1', 'Ship the integration\r')
+    expect(mockBuildStartupCommand).toHaveBeenCalledWith({
+      cwd: '/tmp/hive-omx-project',
+      tmuxSessionName: 'hive-omx-test'
+    })
+    expect(screen.getByTestId('terminal-view-omx-1')).toHaveAttribute(
+      'data-startup-command',
+      "tmux attach-session -t 'hive-omx-test'"
+    )
   })
 })

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { SessionTabs, SessionView } from '@/components/sessions'
-import { OmxSessionView } from '@/components/sessions/OmxSessionView'
 import { SessionTerminalView } from '@/components/sessions/SessionTerminalView'
 import { FileViewer } from '@/components/file-viewer'
 import { InlineDiffViewer, ImageDiffView } from '@/components/diff'
@@ -350,14 +349,9 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
       {/* Always-mounted terminal sessions — kept alive to preserve PTY state across tab switches */}
       {mountedTerminalSessionIds.map((sessionId) => {
         const isActive = visibleTerminalId === sessionId
-        const sdk = getAgentSdk(sessionId)
         return (
           <div key={sessionId} className={isActive ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
-            {sdk === 'omx' ? (
-              <OmxSessionView sessionId={sessionId} isVisible={isActive} />
-            ) : (
-              <SessionTerminalView sessionId={sessionId} isVisible={isActive} />
-            )}
+            <SessionTerminalView sessionId={sessionId} isVisible={isActive} />
           </div>
         )
       })}

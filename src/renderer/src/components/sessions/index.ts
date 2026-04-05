@@ -1,5 +1,4 @@
 export { SessionTabs } from './SessionTabs'
-export { OmxSessionView } from './OmxSessionView'
 export { SessionTerminalView } from './SessionTerminalView'
 export { SessionView } from './SessionView'
 export { SessionHistory } from './SessionHistory'

@@ -1,11 +1,5 @@
 import { execFile } from 'node:child_process'
 
-export interface OmxModeStatus {
-  mode: string
-  active: boolean
-  phase: string
-}
-
 export interface OmxStartupCommandOptions {
   cwd: string
   tmuxSessionName: string
@@ -13,7 +7,6 @@ export interface OmxStartupCommandOptions {
 }
 
 const DEFAULT_OMX_LAUNCH_ARGS = ['--madmax', '--high']
-const STATUS_LINE_RE = /^([^:]+):\s+(ACTIVE|inactive)\s+\(phase:\s+([^)]+)\)\s*$/i
 
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`
@@ -40,35 +33,6 @@ export function buildOmxStartupCommand(options: OmxStartupCommandOptions): strin
 
 export const buildOmxBootstrapCommand = buildOmxStartupCommand
 
-export function parseOmxStatusOutput(output: string): OmxModeStatus[] {
-  const trimmed = output.trim()
-  if (!trimmed || trimmed === 'No active modes.') {
-    return []
-  }
-
-  return trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const match = line.match(STATUS_LINE_RE)
-      if (!match) return null
-
-      const status = {
-        mode: match[1].trim(),
-        active: match[2].toLowerCase() === 'active',
-        phase: match[3].trim()
-      } satisfies OmxModeStatus
-
-      if (status.mode === 'notify-fallback' && !status.active) {
-        return null
-      }
-
-      return status
-    })
-    .filter((value): value is OmxModeStatus => value !== null)
-}
-
 function execFileText(command: string, args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(command, args, { cwd, encoding: 'utf-8' }, (error, stdout) => {
@@ -79,11 +43,6 @@ function execFileText(command: string, args: string[], cwd?: string): Promise<st
       resolve(stdout)
     })
   })
-}
-
-export async function getOmxStatus(cwd: string): Promise<OmxModeStatus[]> {
-  const stdout = await execFileText('omx', ['status'], cwd)
-  return parseOmxStatusOutput(stdout)
 }
 
 export async function killOmxTmuxSession(tmuxSessionName: string): Promise<void> {

@@ -1,9 +1,5 @@
 import { ipcMain } from 'electron'
-import {
-  buildOmxStartupCommand,
-  getOmxStatus,
-  killOmxTmuxSession
-} from '../services/omx-service'
+import { buildOmxStartupCommand, killOmxTmuxSession } from '../services/omx-service'
 import { createLogger } from '../services/logger'
 
 const log = createLogger({ component: 'OmxHandlers' })
@@ -33,22 +29,6 @@ export function registerOmxHandlers(): void {
       }
     }
   )
-
-  ipcMain.handle('omx:status', async (_event, { cwd }: { cwd: string }) => {
-    try {
-      return {
-        success: true,
-        modes: await getOmxStatus(cwd)
-      }
-    } catch (error) {
-      log.error('IPC: omx:status failed', { error, cwd })
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        modes: []
-      }
-    }
-  })
 
   ipcMain.handle(
     'omx:shutdownSession',
