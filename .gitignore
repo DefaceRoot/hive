@@ -68,3 +68,5 @@ scripts/*
 
 # Superpowers brainstorm artifacts
 .superpowers/brainstorm/
+
+.omx
