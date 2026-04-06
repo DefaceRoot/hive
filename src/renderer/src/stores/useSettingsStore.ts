@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { APP_SETTINGS_DB_KEY } from '@shared/types/settings'
+import type { UsageProvider } from '@shared/types/usage'
 
 // ==========================================
 // Types
@@ -23,6 +24,7 @@ export type TerminalOption =
   | 'cmd'
   | 'custom'
 export type EmbeddedTerminalBackend = 'xterm' | 'ghostty'
+export type MergeConflictMode = 'build' | 'plan' | 'always-ask'
 
 export interface SelectedModel {
   providerID: string
@@ -43,6 +45,7 @@ export interface CommandFilterSettings {
   blocklist: string[]
   defaultBehavior: 'ask' | 'allow' | 'block'
   enabled: boolean
+  enterToApprove: boolean
 }
 
 export interface AppSettings {
@@ -51,6 +54,8 @@ export interface AppSettings {
   autoPullBeforeWorktree: boolean
   breedType: 'dogs' | 'cats'
   vimModeEnabled: boolean
+  mergeConflictMode: MergeConflictMode
+  boardMode: 'toggle' | 'sticky-tab'
 
   // Editor
   defaultEditor: EditorOption
@@ -87,7 +92,8 @@ export interface AppSettings {
   showModelProvider: boolean
 
   // Usage indicator
-  showUsageIndicator: boolean
+  usageIndicatorMode: 'current-agent' | 'specific-providers'
+  usageIndicatorProviders: UsageProvider[]
 
   // Agent SDK
   defaultAgentSdk: 'opencode' | 'claude-code' | 'codex' | 'omx' | 'terminal'
@@ -109,6 +115,9 @@ export interface AppSettings {
 
   // Privacy
   telemetryEnabled: boolean
+
+  // Tips
+  tipsEnabled: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -116,6 +125,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoPullBeforeWorktree: true,
   breedType: 'dogs',
   vimModeEnabled: false,
+  mergeConflictMode: 'build',
+  boardMode: 'toggle',
   defaultEditor: 'vscode',
   customEditorCommand: '',
   defaultTerminal: 'terminal',
@@ -132,7 +143,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   modelVariantDefaults: {},
   showModelIcons: false,
   showModelProvider: false,
-  showUsageIndicator: true,
+  usageIndicatorMode: 'current-agent',
+  usageIndicatorProviders: [],
   defaultAgentSdk: 'opencode',
   stripAtMentions: true,
   codexFastMode: false,
@@ -154,9 +166,11 @@ const DEFAULT_SETTINGS: AppSettings = {
       'write: **/credentials*'
     ],
     defaultBehavior: 'ask',
-    enabled: false
+    enabled: false,
+    enterToApprove: false
   },
-  telemetryEnabled: true
+  telemetryEnabled: true,
+  tipsEnabled: true
 }
 
 interface SettingsState extends AppSettings {
@@ -210,7 +224,7 @@ async function loadSettingsFromDatabase(): Promise<AppSettings | null> {
       const value = await window.db.setting.get(APP_SETTINGS_DB_KEY)
       if (value) {
         const parsed = JSON.parse(value)
-        return {
+        const result = {
           ...DEFAULT_SETTINGS,
           ...parsed,
           // Deep-merge commandFilter so new fields (e.g. `enabled`) always have defaults
@@ -220,6 +234,20 @@ async function loadSettingsFromDatabase(): Promise<AppSettings | null> {
             ...(parsed.commandFilter || {})
           }
         }
+
+        // Migrate legacy showUsageIndicator boolean
+        if ('showUsageIndicator' in parsed && !('usageIndicatorMode' in parsed)) {
+          if (parsed.showUsageIndicator === false) {
+            result.usageIndicatorMode = 'specific-providers'
+            result.usageIndicatorProviders = []
+          } else {
+            result.usageIndicatorMode = 'current-agent'
+            result.usageIndicatorProviders = []
+          }
+          delete (result as Record<string, unknown>).showUsageIndicator
+        }
+
+        return result
       }
     }
   } catch (error) {
@@ -234,6 +262,8 @@ function extractSettings(state: SettingsState): AppSettings {
     autoPullBeforeWorktree: state.autoPullBeforeWorktree,
     breedType: state.breedType,
     vimModeEnabled: state.vimModeEnabled,
+    mergeConflictMode: state.mergeConflictMode,
+    boardMode: state.boardMode,
     defaultEditor: state.defaultEditor,
     customEditorCommand: state.customEditorCommand,
     defaultTerminal: state.defaultTerminal,
@@ -250,7 +280,8 @@ function extractSettings(state: SettingsState): AppSettings {
     modelVariantDefaults: state.modelVariantDefaults,
     showModelIcons: state.showModelIcons,
     showModelProvider: state.showModelProvider,
-    showUsageIndicator: state.showUsageIndicator,
+    usageIndicatorMode: state.usageIndicatorMode,
+    usageIndicatorProviders: state.usageIndicatorProviders,
     defaultAgentSdk: state.defaultAgentSdk,
     stripAtMentions: state.stripAtMentions,
     codexFastMode: state.codexFastMode,
@@ -259,7 +290,8 @@ function extractSettings(state: SettingsState): AppSettings {
     skippedUpdateVersion: state.skippedUpdateVersion,
     initialSetupComplete: state.initialSetupComplete,
     commandFilter: state.commandFilter,
-    telemetryEnabled: state.telemetryEnabled
+    telemetryEnabled: state.telemetryEnabled,
+    tipsEnabled: state.tipsEnabled
   }
 }
 
@@ -313,6 +345,43 @@ export const useSettingsStore = create<SettingsState>()(
         // Notify main process of channel change
         if (key === 'updateChannel' && window.updaterOps?.setChannel) {
           window.updaterOps.setChannel(value as string)
+        }
+        // Handle board mode switching side effects
+        if (key === 'boardMode') {
+          // setTimeout ensures the state update completes before side effects run.
+          // Dynamic import() avoids circular dependency (useSessionStore imports useSettingsStore).
+          setTimeout(() => {
+            Promise.all([
+              import('./useKanbanStore'),
+              import('./useSessionStore')
+            ]).then(([{ useKanbanStore }, { useSessionStore, BOARD_TAB_ID }]) => {
+              if (value === 'sticky-tab') {
+                // Toggle → Sticky Tab: deactivate toggle board view, activate board tab
+                if (useKanbanStore.getState().isBoardViewActive) {
+                  useKanbanStore.getState().toggleBoardView()
+                }
+                useSessionStore.getState().setActiveSession(BOARD_TAB_ID)
+              } else {
+                // Sticky Tab → Toggle: if on board tab, fall back to first real session
+                const sessionStore = useSessionStore.getState()
+                if (sessionStore.activeSessionId === BOARD_TAB_ID) {
+                  const worktreeId = sessionStore.activeWorktreeId
+                  if (worktreeId) {
+                    const tabOrder =
+                      sessionStore.tabOrderByWorktree.get(worktreeId) || []
+                    const sessions =
+                      sessionStore.sessionsByWorktree.get(worktreeId) || []
+                    const fallbackId =
+                      tabOrder.find((id) => id !== BOARD_TAB_ID) ||
+                      (sessions.length > 0 ? sessions[0].id : null)
+                    sessionStore.setActiveSession(fallbackId)
+                  } else {
+                    sessionStore.setActiveSession(null)
+                  }
+                }
+              }
+            }).catch(console.error)
+          }, 0)
         }
       },
 
@@ -443,6 +512,8 @@ export const useSettingsStore = create<SettingsState>()(
         autoPullBeforeWorktree: state.autoPullBeforeWorktree,
         breedType: state.breedType,
         vimModeEnabled: state.vimModeEnabled,
+        mergeConflictMode: state.mergeConflictMode,
+        boardMode: state.boardMode,
         defaultEditor: state.defaultEditor,
         customEditorCommand: state.customEditorCommand,
         defaultTerminal: state.defaultTerminal,
@@ -459,7 +530,8 @@ export const useSettingsStore = create<SettingsState>()(
         modelVariantDefaults: state.modelVariantDefaults,
         showModelIcons: state.showModelIcons,
         showModelProvider: state.showModelProvider,
-        showUsageIndicator: state.showUsageIndicator,
+        usageIndicatorMode: state.usageIndicatorMode,
+        usageIndicatorProviders: state.usageIndicatorProviders,
         defaultAgentSdk: state.defaultAgentSdk,
         activeSection: state.activeSection,
         stripAtMentions: state.stripAtMentions,

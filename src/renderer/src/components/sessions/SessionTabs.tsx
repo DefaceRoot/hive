@@ -25,10 +25,12 @@ import {
   Github,
   ClipboardList,
   Upload,
-  FileJson
+  FileJson,
+  FileSearch,
+  GitPullRequest
 } from 'lucide-react'
 import { KanbanIcon } from '@/components/kanban/KanbanIcon'
-import { useSessionStore } from '@/stores/useSessionStore'
+import { useSessionStore, BOARD_TAB_ID } from '@/stores/useSessionStore'
 import { useShallow } from 'zustand/react/shallow'
 import {
   useFileViewerStore,
@@ -68,6 +70,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator
 } from '@/components/ui/dropdown-menu'
+import { Tip } from '@/components/ui/Tip'
+import { useTipStore } from '@/stores/useTipStore'
 
 interface SessionTabProps {
   sessionId: string
@@ -586,6 +590,9 @@ export function SessionTabs(): React.JSX.Element | null {
   const pushGhosttySuppression = useLayoutStore((state) => state.pushGhosttySuppression)
   const popGhosttySuppression = useLayoutStore((state) => state.popGhosttySuppression)
   const isBoardViewActive = useKanbanStore((state) => state.isBoardViewActive)
+  const pinnedSessionIds = useSessionStore((state) => state.pinnedSessionIds)
+  const activePinnedSessionId = useSessionStore((state) => state.activePinnedSessionId)
+  const boardMode = useSettingsStore((s) => s.boardMode)
 
   // Determine whether we are in connection mode or worktree mode
   const isConnectionMode = !!selectedConnectionId && !selectedWorktreeId
@@ -631,6 +638,12 @@ export function SessionTabs(): React.JSX.Element | null {
   // eliminate race conditions between the two async operations.
   const autoStartSession = useSettingsStore((state) => state.autoStartSession)
   const availableAgentSdks = useSettingsStore((state) => state.availableAgentSdks)
+  const defaultAgentSdk = useSettingsStore((state) => state.defaultAgentSdk)
+  const multipleProvidersAvailable = [
+    availableAgentSdks?.opencode,
+    availableAgentSdks?.claude,
+    availableAgentSdks?.codex
+  ].filter(Boolean).length >= 2
   const autoStartedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -651,7 +664,17 @@ export function SessionTabs(): React.JSX.Element | null {
       if (sessions.length > 0) return
 
       autoStartedRef.current = selectedWorktreeId
-      await createSession(selectedWorktreeId, project.id)
+      await createSession(selectedWorktreeId, project.id, undefined, undefined, { autoFocus: false })
+
+      // In toggle mode with no prior session, the auto-created session is the only
+      // thing to show — focus it. In sticky-tab mode, the board tab is already active.
+      const currentActive = useSessionStore.getState().activeSessionId
+      if (!currentActive) {
+        const sessions = useSessionStore.getState().sessionsByWorktree.get(selectedWorktreeId) || []
+        if (sessions.length > 0) {
+          useSessionStore.getState().setActiveSession(sessions[0].id)
+        }
+      }
     })()
 
     return () => {
@@ -806,6 +829,13 @@ export function SessionTabs(): React.JSX.Element | null {
       if (!result.success) {
         toast.error(result.error || 'Failed to create session')
       }
+      // Tip logic for AI providers (not terminal)
+      if (sdk !== 'terminal') {
+        useTipStore.getState().markTipAsSeen('provider-right-click')
+        if (sdk !== defaultAgentSdk) {
+          useTipStore.getState().setNonDefaultProviderChosen(true)
+        }
+      }
       return
     }
 
@@ -814,6 +844,13 @@ export function SessionTabs(): React.JSX.Element | null {
     const result = await createSession(selectedWorktreeId, project.id, sdk)
     if (!result.success) {
       toast.error(result.error || 'Failed to create session')
+    }
+    // Tip logic for AI providers (not terminal)
+    if (sdk !== 'terminal') {
+      useTipStore.getState().markTipAsSeen('provider-right-click')
+      if (sdk !== defaultAgentSdk) {
+        useTipStore.getState().setNonDefaultProviderChosen(true)
+      }
     }
   }
 
@@ -1002,14 +1039,143 @@ export function SessionTabs(): React.JSX.Element | null {
   // Determine if a file/diff tab is the active one
   const isFileTabActive = activeFilePath !== null
 
+  // Sticky-tab mode: board is visible when its tab is selected and no file is foregrounded
+  const isStickyBoardActive = boardMode === 'sticky-tab' && activeSessionId === BOARD_TAB_ID && !isFileTabActive
+
+  /** Renders connection tabs + session tabs — shared between sticky-tab and normal mode */
+  const renderSessionTabs = () => (
+    <>
+      {/* Sticky connection session tabs (worktree mode only) */}
+      {!isConnectionMode &&
+        connectionsForWorktree.map((connection) => {
+          const connectionSessions = sessionsByConnection.get(connection.id) || []
+          const connectionTabOrder = tabOrderByConnection.get(connection.id) || []
+          const orderedConnectionSessions = connectionTabOrder
+            .map((id) => connectionSessions.find((s) => s.id === id))
+            .filter((s): s is NonNullable<typeof s> => s !== undefined)
+
+          if (orderedConnectionSessions.length === 0) return null
+
+          return (
+            <Fragment key={connection.id}>
+              {/* Thin visual separator before each connection group */}
+              <div className="w-px bg-border/60 self-stretch my-1" aria-hidden="true" />
+              {orderedConnectionSessions.map((session) => (
+                <ConnectionSessionTab
+                  key={session.id}
+                  sessionId={session.id}
+                  name={session.name || 'Untitled'}
+                  isActive={session.id === inlineConnectionSessionId && !isFileTabActive}
+                  onClick={() => handleConnectionSessionTabClick(session.id)}
+                  connectionColor={connection.color}
+                  connectionName={connection.name}
+                />
+              ))}
+            </Fragment>
+          )
+        })}
+
+      {/* Session tabs */}
+      {allSessions.map((session) => {
+        const isOrphaned = orphanedSessions.has(session.id)
+        return (
+          <SessionTab
+            key={session.id}
+            sessionId={session.id}
+            name={session.name || 'Untitled'}
+            agentSdk={session.agent_sdk}
+            isActive={
+              session.id === activeSessionId && !isFileTabActive && !inlineConnectionSessionId
+            }
+            onClick={() => handleSessionTabClick(session.id)}
+            onClose={(e) => handleCloseSession(e, session.id)}
+            onMiddleClick={(e) => handleCloseSession(e, session.id)}
+            onRename={(newName) => handleRenameSession(session.id, newName)}
+            onDragStart={(e) => handleDragStart(e, session.id)}
+            onDragOver={(e) => handleDragOver(e, session.id)}
+            onDrop={(e) => handleDrop(e, session.id)}
+            onDragEnd={handleDragEnd}
+            isDragging={draggedTabId === session.id}
+            isDragOver={dragOverTabId === session.id}
+            worktreeId={resolvedScopeId}
+            onCloseOthers={
+              isOrphaned || !resolvedScopeId
+                ? undefined
+                : () =>
+                    isConnectionMode
+                      ? closeOtherConnectionSessions(resolvedScopeId, session.id)
+                      : closeOtherSessions(resolvedScopeId, session.id)
+            }
+            onCloseToRight={
+              isOrphaned || !resolvedScopeId
+                ? undefined
+                : () =>
+                    isConnectionMode
+                      ? closeConnectionSessionsToRight(resolvedScopeId, session.id)
+                      : closeSessionsToRight(resolvedScopeId, session.id)
+            }
+            hintCode={sessionHints.sessionHintMap.get(session.id)}
+          />
+        )
+      })}
+    </>
+  )
+
   return (
     <div
       className="flex items-center border-b border-border bg-muted/30"
       data-testid="session-tabs"
     >
       {/* New session / new ticket button - on the left */}
-      {isBoardViewActive && !isConnectionBoardActive ? (
-        /* Kanban mode: plus button opens the ticket creation modal (hidden in connection board — board has its own) */
+      {boardMode === 'sticky-tab' || !isBoardViewActive ? (
+        /* Session create button with right-click provider menu */
+        <Tip tipId="provider-right-click" enabled={multipleProvidersAvailable}>
+          <div className="shrink-0">
+            <ContextMenu
+              onOpenChange={(open) => {
+                if (open) pushGhosttySuppression('session-tabs-context')
+                else popGhosttySuppression('session-tabs-context')
+              }}
+            >
+              <ContextMenuTrigger asChild>
+                <button
+                  onClick={handleCreateSession}
+                  className="p-1.5 hover:bg-accent transition-colors border-r border-border"
+                  data-testid="create-session"
+                  title="Create new session (right-click for options)"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                {availableAgentSdks?.opencode && (
+                  <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('opencode')}>
+                    New OpenCode Session
+                  </ContextMenuItem>
+                )}
+                {availableAgentSdks?.claude && (
+                  <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('claude-code')}>
+                    New Claude Code Session
+                  </ContextMenuItem>
+                )}
+                {availableAgentSdks?.codex && (
+                  <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('codex')}>
+                    New Codex Session
+                  </ContextMenuItem>
+                )}
+                {(availableAgentSdks?.opencode ||
+                  availableAgentSdks?.claude ||
+                  availableAgentSdks?.codex) && <ContextMenuSeparator />}
+                <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('terminal')}>
+                  <TerminalSquare className="h-4 w-4 mr-2 text-emerald-500" />
+                  New Terminal
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          </div>
+        </Tip>
+      ) : isBoardViewActive && !isConnectionBoardActive ? (
+        /* Toggle mode kanban: plus button opens the ticket creation modal (hidden in connection board — board has its own) */
         <button
           onClick={() => setIsTicketCreateOpen(true)}
           className="p-1.5 hover:bg-accent transition-colors shrink-0 border-r border-border"
@@ -1087,29 +1253,109 @@ export function SessionTabs(): React.JSX.Element | null {
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         data-testid="session-tabs-scroll-container"
       >
-        {isBoardViewActive ? (
-          /* Kanban board tab */
-          <div
-            data-testid="kanban-board-tab"
-            onClick={() => {
-              setActiveFile(null)
-              useFileViewerStore.getState().clearActiveDiff()
-              useFileViewerStore.getState().closeContextEditor()
-            }}
-            className={cn(
-              'group relative flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer select-none',
-              'border-r border-border transition-colors min-w-[100px] max-w-[200px]',
-              !isFileTabActive
-                ? 'bg-background text-foreground'
-                : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-            )}
-          >
-            <KanbanIcon className="h-3.5 w-3.5 flex-shrink-0 text-blue-400" />
-            <span className="truncate flex-1">Board</span>
-            {!isFileTabActive && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
-          </div>
+        {boardMode === 'sticky-tab' ? (
+          <>
+            {/* Sticky board tab — permanent, no close button, not draggable */}
+            <div
+              data-testid="sticky-board-tab"
+              role="tab"
+              tabIndex={0}
+              onClick={() => {
+                useFileViewerStore.getState().clearActiveViews()
+                useSessionStore.getState().setActiveSession(BOARD_TAB_ID)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  useFileViewerStore.getState().clearActiveViews()
+                  useSessionStore.getState().setActiveSession(BOARD_TAB_ID)
+                }
+              }}
+              className={cn(
+                'group relative flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer select-none',
+                'border-r border-border transition-colors min-w-[100px] max-w-[200px]',
+                activeSessionId === BOARD_TAB_ID && !isFileTabActive
+                  ? 'bg-background text-foreground'
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+              )}
+            >
+              <KanbanIcon className="h-3.5 w-3.5 flex-shrink-0 text-blue-400" />
+              <span className="truncate flex-1">Board</span>
+              {activeSessionId === BOARD_TAB_ID && !isFileTabActive && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+              )}
+            </div>
+            {/* Normal session tabs alongside the sticky board tab */}
+            {renderSessionTabs()}
+          </>
+        ) : isBoardViewActive ? (
+          <>
+            {/* Toggle mode: Kanban board tab */}
+            <div
+              data-testid="kanban-board-tab"
+              onClick={() => {
+                useFileViewerStore.getState().clearActiveViews()
+                useSessionStore.getState().setActivePinnedSession(null)
+              }}
+              className={cn(
+                'group relative flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer select-none',
+                'border-r border-border transition-colors min-w-[100px] max-w-[200px]',
+                !isFileTabActive && !activePinnedSessionId
+                  ? 'bg-background text-foreground'
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+              )}
+            >
+              <KanbanIcon className="h-3.5 w-3.5 flex-shrink-0 text-blue-400" />
+              <span className="truncate flex-1">Board</span>
+              {!isFileTabActive && !activePinnedSessionId && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+            </div>
+            {/* Pinned session tabs */}
+            {Array.from(pinnedSessionIds).map((sessionId) => {
+              let session: { id: string; name: string | null; mode?: string } | null = null
+              for (const sessions of sessionsByWorktree.values()) {
+                const found = sessions.find((s) => s.id === sessionId)
+                if (found) { session = found; break }
+              }
+              if (!session) return null
+
+              const isActive = activePinnedSessionId === sessionId && !isFileTabActive
+              const isReview = session.name?.toLowerCase().includes('review')
+              const Icon = isReview ? FileSearch : GitPullRequest
+
+              return (
+                <div
+                  key={sessionId}
+                  data-testid={`pinned-session-tab-${sessionId}`}
+                  onClick={() => {
+                    useFileViewerStore.getState().clearActiveViews()
+                    useSessionStore.getState().setActivePinnedSession(sessionId)
+                  }}
+                  className={cn(
+                    'group relative flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer select-none',
+                    'border-r border-border transition-colors min-w-[100px] max-w-[200px]',
+                    isActive
+                      ? 'bg-background text-foreground'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 flex-shrink-0 text-blue-400" />
+                  <span className="truncate flex-1">{session.name || 'Session'}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      useSessionStore.getState().unpinSessionFromBoard(sessionId)
+                    }}
+                    className="opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity ml-1"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                  {isActive && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+                </div>
+              )
+            })}
+          </>
         ) : (
-          /* Normal mode: empty state OR connection tabs + session tabs */
+          /* Normal mode (toggle, board not active): empty state OR session tabs */
           orderedSessions.length === 0 &&
           !(
             !isConnectionMode &&
@@ -1122,81 +1368,7 @@ export function SessionTabs(): React.JSX.Element | null {
               No sessions yet. Click + to create one.
             </div>
           ) : (
-            <>
-              {/* Sticky connection session tabs (worktree mode only) */}
-              {!isConnectionMode &&
-                connectionsForWorktree.map((connection) => {
-                  const connectionSessions = sessionsByConnection.get(connection.id) || []
-                  const connectionTabOrder = tabOrderByConnection.get(connection.id) || []
-                  const orderedConnectionSessions = connectionTabOrder
-                    .map((id) => connectionSessions.find((s) => s.id === id))
-                    .filter((s): s is NonNullable<typeof s> => s !== undefined)
-
-                  if (orderedConnectionSessions.length === 0) return null
-
-                  return (
-                    <Fragment key={connection.id}>
-                      {/* Thin visual separator before each connection group */}
-                      <div className="w-px bg-border/60 self-stretch my-1" aria-hidden="true" />
-                      {orderedConnectionSessions.map((session) => (
-                        <ConnectionSessionTab
-                          key={session.id}
-                          sessionId={session.id}
-                          name={session.name || 'Untitled'}
-                          isActive={session.id === inlineConnectionSessionId && !isFileTabActive}
-                          onClick={() => handleConnectionSessionTabClick(session.id)}
-                          connectionColor={connection.color}
-                          connectionName={connection.name}
-                        />
-                      ))}
-                    </Fragment>
-                  )
-                })}
-
-              {/* Session tabs */}
-              {allSessions.map((session) => {
-                const isOrphaned = orphanedSessions.has(session.id)
-                return (
-                  <SessionTab
-                    key={session.id}
-                    sessionId={session.id}
-                    name={session.name || 'Untitled'}
-                    agentSdk={session.agent_sdk}
-                    isActive={
-                      session.id === activeSessionId && !isFileTabActive && !inlineConnectionSessionId
-                    }
-                    onClick={() => handleSessionTabClick(session.id)}
-                    onClose={(e) => handleCloseSession(e, session.id)}
-                    onMiddleClick={(e) => handleCloseSession(e, session.id)}
-                    onRename={(newName) => handleRenameSession(session.id, newName)}
-                    onDragStart={(e) => handleDragStart(e, session.id)}
-                    onDragOver={(e) => handleDragOver(e, session.id)}
-                    onDrop={(e) => handleDrop(e, session.id)}
-                    onDragEnd={handleDragEnd}
-                    isDragging={draggedTabId === session.id}
-                    isDragOver={dragOverTabId === session.id}
-                    worktreeId={resolvedScopeId}
-                    onCloseOthers={
-                      isOrphaned || !resolvedScopeId
-                        ? undefined
-                        : () =>
-                            isConnectionMode
-                              ? closeOtherConnectionSessions(resolvedScopeId, session.id)
-                              : closeOtherSessions(resolvedScopeId, session.id)
-                    }
-                    onCloseToRight={
-                      isOrphaned || !resolvedScopeId
-                        ? undefined
-                        : () =>
-                            isConnectionMode
-                              ? closeConnectionSessionsToRight(resolvedScopeId, session.id)
-                              : closeSessionsToRight(resolvedScopeId, session.id)
-                    }
-                    hintCode={sessionHints.sessionHintMap.get(session.id)}
-                  />
-                )
-              })}
-            </>
+            renderSessionTabs()
           )
         )}
 
@@ -1292,7 +1464,7 @@ export function SessionTabs(): React.JSX.Element | null {
       )}
 
       {/* Import dropdown — kanban mode, sits on the tab bar line (hidden in connection board — board has its own) */}
-      {isBoardViewActive && !isConnectionBoardActive && (
+      {(isBoardViewActive || isStickyBoardActive) && !isConnectionMode && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -1344,7 +1516,7 @@ export function SessionTabs(): React.JSX.Element | null {
       )}
 
       {/* Ticket creation modal — kanban mode */}
-      {isBoardViewActive && project && (
+      {(isBoardViewActive || isStickyBoardActive) && project && (
         <>
           <TicketCreateModal
             open={isTicketCreateOpen}

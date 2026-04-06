@@ -10,7 +10,9 @@ import {
   Minus,
   FileDiff,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Hammer,
+  Map
 } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from '@/lib/toast'
@@ -20,6 +22,13 @@ import { useGitStore, type GitFileStatus } from '@/stores/useGitStore'
 import { useWorktreeStore } from '@/stores/useWorktreeStore'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { useFileViewerStore } from '@/stores/useFileViewerStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem
+} from '@/components/ui/dropdown-menu'
 import { GitCommitForm } from './GitCommitForm'
 import { GitPushPull } from './GitPushPull'
 import { cn } from '@/lib/utils'
@@ -122,6 +131,7 @@ export function GitStatusPanel({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isFixingConflicts, setIsFixingConflicts] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const mergeConflictMode = useSettingsStore((s) => s.mergeConflictMode)
 
   // Load initial data
   useEffect(() => {
@@ -390,10 +400,12 @@ export function GitStatusPanel({
     overscan: 10
   })
 
-  const handleFixConflicts = useCallback(async () => {
+  const handleFixConflicts = useCallback(async (modeOverride?: 'build' | 'plan') => {
     if (!worktreePath) return
     setIsFixingConflicts(true)
     try {
+      const resolvedMode = modeOverride ?? (mergeConflictMode === 'always-ask' ? 'build' : mergeConflictMode)
+
       const worktreeStore = useWorktreeStore.getState()
       const selectedWorktreeId = worktreeStore.selectedWorktreeId
       if (!selectedWorktreeId) {
@@ -416,7 +428,7 @@ export function GitStatusPanel({
       const branchName = branchInfo?.name || 'unknown'
 
       const sessionStore = useSessionStore.getState()
-      const result = await sessionStore.createSession(selectedWorktreeId, projectId)
+      const result = await sessionStore.createSession(selectedWorktreeId, projectId, undefined, resolvedMode)
       if (!result.success || !result.session) {
         toast.error('Failed to create session')
         return
@@ -431,7 +443,7 @@ export function GitStatusPanel({
     } finally {
       setIsFixingConflicts(false)
     }
-  }, [worktreePath, branchInfo])
+  }, [worktreePath, branchInfo, mergeConflictMode])
 
   if (!worktreePath) {
     return null
@@ -481,22 +493,55 @@ export function GitStatusPanel({
         </div>
         <div className="flex items-center gap-0.5">
           {hasConflicts && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 px-1.5 text-[10px] font-bold text-orange-500 hover:text-orange-400 hover:bg-orange-500/10"
-              onClick={handleFixConflicts}
-              disabled={isFixingConflicts}
-              title={`${conflictedFiles.length} file(s) with merge conflicts — click to fix with AI`}
-              data-testid="git-merge-conflicts-button"
-            >
-              {isFixingConflicts ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-0.5" />
-              ) : (
-                <AlertTriangle className="h-3 w-3 mr-0.5" />
-              )}
-              CONFLICTS
-            </Button>
+            mergeConflictMode === 'always-ask' ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1.5 text-[10px] font-bold text-orange-500 hover:text-orange-400 hover:bg-orange-500/10"
+                    disabled={isFixingConflicts}
+                    title={`${conflictedFiles.length} file(s) with merge conflicts — click to fix with AI`}
+                    data-testid="git-merge-conflicts-button"
+                  >
+                    {isFixingConflicts ? (
+                      <Loader2 className="h-3 w-3 animate-spin mr-0.5" />
+                    ) : (
+                      <AlertTriangle className="h-3 w-3 mr-0.5" />
+                    )}
+                    CONFLICTS
+                    {!isFixingConflicts && <ChevronDown className="h-3 w-3 ml-0.5" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleFixConflicts('build')}>
+                    <Hammer className="h-4 w-4 mr-2" />
+                    Fix in Build mode
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFixConflicts('plan')}>
+                    <Map className="h-4 w-4 mr-2" />
+                    Fix in Plan mode
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-1.5 text-[10px] font-bold text-orange-500 hover:text-orange-400 hover:bg-orange-500/10"
+                onClick={() => handleFixConflicts()}
+                disabled={isFixingConflicts}
+                title={`${conflictedFiles.length} file(s) with merge conflicts — click to fix with AI`}
+                data-testid="git-merge-conflicts-button"
+              >
+                {isFixingConflicts ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-0.5" />
+                ) : (
+                  <AlertTriangle className="h-3 w-3 mr-0.5" />
+                )}
+                CONFLICTS
+              </Button>
+            )
           )}
           <Button
             variant="ghost"

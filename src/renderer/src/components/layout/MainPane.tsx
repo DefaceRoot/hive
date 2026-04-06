@@ -6,13 +6,14 @@ import { FileViewer } from '@/components/file-viewer'
 import { InlineDiffViewer, ImageDiffView } from '@/components/diff'
 import { isImageFile } from '@shared/types/file-utils'
 import { useWorktreeStore } from '@/stores/useWorktreeStore'
-import { useSessionStore } from '@/stores/useSessionStore'
+import { useSessionStore, BOARD_TAB_ID } from '@/stores/useSessionStore'
 import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useFileViewerStore } from '@/stores/useFileViewerStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useKanbanStore } from '@/stores/useKanbanStore'
 import { useProjectStore } from '@/stores/useProjectStore'
 import { usePinnedStore } from '@/stores/usePinnedStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { KanbanBoard } from '@/components/kanban/KanbanBoard'
 import { KanbanIcon } from '@/components/kanban/KanbanIcon'
 
@@ -37,9 +38,11 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
   const contextEditorWorktreeId = useFileViewerStore((state) => state.contextEditorWorktreeId)
   const closedTerminalSessionIds = useSessionStore((state) => state.closedTerminalSessionIds)
   const ghosttyOverlaySuppressed = useLayoutStore((state) => state.ghosttyOverlaySuppressed)
+  const activePinnedSessionId = useSessionStore((state) => state.activePinnedSessionId)
   const isBoardViewActive = useKanbanStore((state) => state.isBoardViewActive)
   const isPinnedBoardActive = useKanbanStore((state) => state.isPinnedBoardActive)
   const pinnedStoreLoaded = usePinnedStore((state) => state.loaded)
+  const boardMode = useSettingsStore((s) => s.boardMode)
   const selectedProjectId = useProjectStore((state) => state.selectedProjectId)
   const selectedProjectPath = useProjectStore((state) =>
     state.projects.find((p) => p.id === state.selectedProjectId)?.path ?? ''
@@ -176,6 +179,36 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
       return children
     }
 
+    // Sticky-tab board mode: render board when BOARD_TAB_ID is the active session
+    if (boardMode === 'sticky-tab' && activeSessionId === BOARD_TAB_ID && !activeFilePath && !activeDiff && !contextEditorWorktreeId) {
+      // Pinned board takes priority when active
+      if (isPinnedBoardActive && pinnedStoreLoaded) {
+        return <KanbanBoard isPinnedMode={true} />
+      }
+      // Worktree mode: show project board
+      if (selectedProjectId && !selectedConnectionId) {
+        return <KanbanBoard projectId={selectedProjectId} projectPath={selectedProjectPath} />
+      }
+      // Connection mode: show connection board
+      if (selectedConnectionId) {
+        return <KanbanBoard connectionId={selectedConnectionId} />
+      }
+      // No project selected: empty state
+      return (
+        <div className="flex-1 flex items-center justify-center text-muted-foreground">
+          <div className="text-center">
+            <KanbanIcon className="h-8 w-8 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">Select a project to view its board</p>
+          </div>
+        </div>
+      )
+    }
+
+    // Pinned session takes priority over board when active
+    if (isBoardViewActive && activePinnedSessionId && !activeFilePath && !activeDiff && !contextEditorWorktreeId) {
+      return <SessionView key={activePinnedSessionId} sessionId={activePinnedSessionId} />
+    }
+
     // Pinned projects board view (independent of project/connection selection)
     // Wait for pinned store to load so we don't flash an empty state on startup.
     if (isPinnedBoardActive && pinnedStoreLoaded && !activeFilePath && !activeDiff && !contextEditorWorktreeId) {
@@ -183,7 +216,7 @@ export function MainPane({ children }: MainPaneProps): React.JSX.Element {
     }
 
     // Board view — project-level (works with or without worktree selected)
-    if (isBoardViewActive && selectedProjectId && !activeFilePath && !activeDiff && !contextEditorWorktreeId) {
+    if (isBoardViewActive && selectedProjectId && !selectedConnectionId && !activeFilePath && !activeDiff && !contextEditorWorktreeId) {
       return <KanbanBoard projectId={selectedProjectId} projectPath={selectedProjectPath} />
     }
 

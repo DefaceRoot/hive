@@ -504,6 +504,25 @@ describe('Session 11: Kanban Ticket Modal Modes', () => {
         // Should have created a session
         expect(mockDbSession.create).toHaveBeenCalled()
       })
+
+      // Should NOT have changed activeSessionId (stay on board)
+      expect(useSessionStore.getState().activeSessionId).toBeNull()
+    })
+
+    test('Supercharge local creates session without changing focus', async () => {
+      render(<KanbanTicketModal />)
+
+      const btn = screen.getByTestId('plan-review-supercharge-local-btn')
+      await act(async () => {
+        fireEvent.click(btn)
+      })
+
+      await waitFor(() => {
+        expect(mockDbSession.create).toHaveBeenCalled()
+      })
+
+      // Should NOT have changed activeSessionId (stay on board)
+      expect(useSessionStore.getState().activeSessionId).toBeNull()
     })
 
     test('Handoff calls correct session store actions', async () => {

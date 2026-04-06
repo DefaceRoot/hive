@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useWorktreeStore } from './useWorktreeStore'
+import { useKanbanStore } from './useKanbanStore'
 
 // Debounce timers for git status refresh per worktree
 const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -431,6 +432,14 @@ export const useGitStore = create<GitStoreState>()((set, get) => ({
           }
           return { attachedPR: newMap }
         })
+      } else {
+        // Sync PR to linked kanban tickets (only on success)
+        try {
+          await window.kanban.ticket.syncPR(worktreeId, prNumber, prUrl)
+          useKanbanStore.getState().syncPRToTicket(worktreeId, prNumber, prUrl)
+        } catch {
+          // Non-critical — ticket badge sync failure should not block PR attach
+        }
       }
     } catch {
       // Rollback on error
@@ -464,6 +473,14 @@ export const useGitStore = create<GitStoreState>()((set, get) => ({
           if (prev) newMap.set(worktreeId, prev)
           return { attachedPR: newMap }
         })
+      } else {
+        // Clear PR from linked kanban tickets (only on success)
+        try {
+          await window.kanban.ticket.clearPR(worktreeId)
+          useKanbanStore.getState().clearPRFromTicket(worktreeId)
+        } catch {
+          // Non-critical
+        }
       }
     } catch {
       // Rollback on error

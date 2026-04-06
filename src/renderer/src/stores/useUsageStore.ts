@@ -110,8 +110,9 @@ export function normalizeUsage(
 
   if (!openaiUsage) return null
 
-  const primary = openaiUsage.rate_limit.primary_window
-  const secondary = openaiUsage.rate_limit.secondary_window
+  const rateLimit = openaiUsage.rate_limit
+  const primary = rateLimit?.primary_window
+  const secondary = rateLimit?.secondary_window
 
   return {
     five_hour: {

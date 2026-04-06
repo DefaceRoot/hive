@@ -104,6 +104,16 @@ export class DatabaseService {
     } as Worktree
   }
 
+  // Maps SQLite INTEGER 0/1 to boolean for session rows.
+  // NOTE: If future boolean or JSON columns are added to sessions, they must be
+  // explicitly mapped here (the spread passes raw SQLite values through).
+  private mapSessionRow(row: Record<string, unknown>): Session {
+    return {
+      ...row,
+      pinned_to_board: !!(row.pinned_to_board as number)
+    } as Session
+  }
+
   // Maps SQLite row to KanbanTicket (INTEGER 0/1 → boolean, JSON string → array)
   private mapKanbanTicketRow(row: Record<string, unknown>): KanbanTicket {
     let attachments: unknown[] = []
@@ -134,6 +144,8 @@ export class DatabaseService {
       external_provider: (row.external_provider as string) ?? null,
       external_id: (row.external_id as string) ?? null,
       external_url: (row.external_url as string) ?? null,
+      github_pr_number: (row.github_pr_number as number) ?? null,
+      github_pr_url: (row.github_pr_url as string) ?? null,
       total_tokens: (row.total_tokens as number) ?? 0
     }
   }
@@ -236,6 +248,9 @@ export class DatabaseService {
     this.safeAddColumn('connections', 'pinned', 'INTEGER NOT NULL DEFAULT 0')
     this.safeAddColumn('projects', 'kanban_simple_mode', 'INTEGER NOT NULL DEFAULT 0')
     this.safeAddColumn('kanban_tickets', 'archived_at', 'TEXT DEFAULT NULL')
+    this.safeAddColumn('sessions', 'pinned_to_board', 'INTEGER NOT NULL DEFAULT 0')
+    this.safeAddColumn('kanban_tickets', 'github_pr_number', 'INTEGER DEFAULT NULL')
+    this.safeAddColumn('kanban_tickets', 'github_pr_url', 'TEXT DEFAULT NULL')
 
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_sessions_connection ON sessions(connection_id);
@@ -856,12 +871,13 @@ export class DatabaseService {
       model_variant: data.model_variant ?? null,
       created_at: now,
       updated_at: now,
-      completed_at: null
+      completed_at: null,
+      pinned_to_board: false
     }
 
     db.prepare(
-      `INSERT INTO sessions (id, worktree_id, project_id, connection_id, name, status, opencode_session_id, agent_sdk, mode, model_provider_id, model_id, model_variant, created_at, updated_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO sessions (id, worktree_id, project_id, connection_id, name, status, opencode_session_id, agent_sdk, mode, model_provider_id, model_id, model_variant, created_at, updated_at, completed_at, pinned_to_board)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       session.id,
       session.worktree_id,
@@ -877,7 +893,8 @@ export class DatabaseService {
       session.model_variant,
       session.created_at,
       session.updated_at,
-      session.completed_at
+      session.completed_at,
+      0
     )
 
     return session
@@ -885,16 +902,18 @@ export class DatabaseService {
 
   getSession(id: string): Session | null {
     const db = this.getDb()
-    const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as Session | undefined
-    return row ?? null
+    const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined
+    return row ? this.mapSessionRow(row) : null
   }
 
   getSessionByOpenCodeSessionId(opencodeSessionId: string): Session | null {
     const db = this.getDb()
     const row = db
       .prepare('SELECT * FROM sessions WHERE opencode_session_id = ? LIMIT 1')
-      .get(opencodeSessionId) as Session | undefined
-    return row ?? null
+      .get(opencodeSessionId) as Record<string, unknown> | undefined
+    return row ? this.mapSessionRow(row) : null
   }
 
   getAgentSdkForSession(
@@ -911,25 +930,28 @@ export class DatabaseService {
 
   getSessionsByWorktree(worktreeId: string): Session[] {
     const db = this.getDb()
-    return db
+    const rows = db
       .prepare('SELECT * FROM sessions WHERE worktree_id = ? ORDER BY updated_at DESC')
-      .all(worktreeId) as Session[]
+      .all(worktreeId) as Record<string, unknown>[]
+    return rows.map((row) => this.mapSessionRow(row))
   }
 
   getSessionsByProject(projectId: string): Session[] {
     const db = this.getDb()
-    return db
+    const rows = db
       .prepare('SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC')
-      .all(projectId) as Session[]
+      .all(projectId) as Record<string, unknown>[]
+    return rows.map((row) => this.mapSessionRow(row))
   }
 
   getActiveSessionsByWorktree(worktreeId: string): Session[] {
     const db = this.getDb()
-    return db
+    const rows = db
       .prepare(
         "SELECT * FROM sessions WHERE worktree_id = ? AND status = 'active' ORDER BY updated_at DESC"
       )
-      .all(worktreeId) as Session[]
+      .all(worktreeId) as Record<string, unknown>[]
+    return rows.map((row) => this.mapSessionRow(row))
   }
 
   getActiveSessionsByAgentSdk(agentSdk: Session['agent_sdk']): Session[] {
@@ -947,7 +969,7 @@ export class DatabaseService {
     if (!existing) return null
 
     const updates: string[] = ['updated_at = ?']
-    const values: (string | null)[] = [new Date().toISOString()]
+    const values: (string | number | null)[] = [new Date().toISOString()]
 
     if (data.name !== undefined) {
       updates.push('name = ?')
@@ -985,6 +1007,10 @@ export class DatabaseService {
       updates.push('completed_at = ?')
       values.push(data.completed_at)
     }
+    if (data.pinned_to_board !== undefined) {
+      updates.push('pinned_to_board = ?')
+      values.push(data.pinned_to_board ? 1 : 0)
+    }
 
     values.push(id)
     db.prepare(`UPDATE sessions SET ${updates.join(', ')} WHERE id = ?`).run(...values)
@@ -996,6 +1022,16 @@ export class DatabaseService {
     const db = this.getDb()
     const result = db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
     return result.changes > 0
+  }
+
+  getPinnedSessions(worktreeId: string): Session[] {
+    const db = this.getDb()
+    const rows = db
+      .prepare(
+        'SELECT * FROM sessions WHERE pinned_to_board = 1 AND worktree_id = ? ORDER BY updated_at DESC'
+      )
+      .all(worktreeId) as Record<string, unknown>[]
+    return rows.map((row) => this.mapSessionRow(row))
   }
 
   searchSessions(options: SessionSearchOptions): SessionWithWorktree[] {
@@ -1058,7 +1094,8 @@ export class DatabaseService {
 
     query += ' ORDER BY s.updated_at DESC'
 
-    return db.prepare(query).all(...values) as SessionWithWorktree[]
+    const rows = db.prepare(query).all(...values) as Record<string, unknown>[]
+    return rows.map((row) => this.mapSessionRow(row) as SessionWithWorktree)
   }
 
   // Session draft operations
@@ -1481,18 +1518,20 @@ export class DatabaseService {
 
   getActiveSessionsByConnection(connectionId: string): Session[] {
     const db = this.getDb()
-    return db
+    const rows = db
       .prepare(
         "SELECT * FROM sessions WHERE connection_id = ? AND status = 'active' ORDER BY updated_at DESC"
       )
-      .all(connectionId) as Session[]
+      .all(connectionId) as Record<string, unknown>[]
+    return rows.map((row) => this.mapSessionRow(row))
   }
 
   getSessionsByConnection(connectionId: string): Session[] {
     const db = this.getDb()
-    return db
+    const rows = db
       .prepare('SELECT * FROM sessions WHERE connection_id = ? ORDER BY updated_at DESC')
-      .all(connectionId) as Session[]
+      .all(connectionId) as Record<string, unknown>[]
+    return rows.map((row) => this.mapSessionRow(row))
   }
 
   // Space operations
@@ -1654,10 +1693,12 @@ export class DatabaseService {
     const externalProvider = data.external_provider ?? null
     const externalId = data.external_id ?? null
     const externalUrl = data.external_url ?? null
+    const githubPrNumber = data.github_pr_number ?? null
+    const githubPrUrl = data.github_pr_url ?? null
 
     db.prepare(
-      `INSERT INTO kanban_tickets (id, project_id, title, description, attachments, "column", sort_order, current_session_id, worktree_id, mode, plan_ready, external_provider, external_id, external_url, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO kanban_tickets (id, project_id, title, description, attachments, "column", sort_order, current_session_id, worktree_id, mode, plan_ready, external_provider, external_id, external_url, github_pr_number, github_pr_url, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       data.project_id,
@@ -1673,6 +1714,8 @@ export class DatabaseService {
       externalProvider,
       externalId,
       externalUrl,
+      githubPrNumber,
+      githubPrUrl,
       now,
       now
     )
@@ -1692,6 +1735,8 @@ export class DatabaseService {
       external_provider: externalProvider,
       external_id: externalId,
       external_url: externalUrl,
+      github_pr_number: githubPrNumber,
+      github_pr_url: githubPrUrl,
       total_tokens: 0,
       created_at: now,
       updated_at: now
@@ -1772,6 +1817,14 @@ export class DatabaseService {
     if (data.plan_ready !== undefined) {
       updates.push('plan_ready = ?')
       values.push(data.plan_ready ? 1 : 0)
+    }
+    if (data.github_pr_number !== undefined) {
+      updates.push('github_pr_number = ?')
+      values.push(data.github_pr_number)
+    }
+    if (data.github_pr_url !== undefined) {
+      updates.push('github_pr_url = ?')
+      values.push(data.github_pr_url)
     }
 
     if (updates.length === 1) return existing // Only updated_at, nothing meaningful changed
@@ -1856,6 +1909,22 @@ export class DatabaseService {
       )
       .all(sessionId) as Record<string, unknown>[]
     return rows.map((row) => this.mapKanbanTicketRow(row))
+  }
+
+  syncPRToTickets(worktreeId: string, prNumber: number, prUrl: string): void {
+    const db = this.getDb()
+    const now = new Date().toISOString()
+    db.prepare(
+      'UPDATE kanban_tickets SET github_pr_number = ?, github_pr_url = ?, updated_at = ? WHERE worktree_id = ?'
+    ).run(prNumber, prUrl, now, worktreeId)
+  }
+
+  clearPRFromTickets(worktreeId: string): void {
+    const db = this.getDb()
+    const now = new Date().toISOString()
+    db.prepare(
+      'UPDATE kanban_tickets SET github_pr_number = NULL, github_pr_url = NULL, updated_at = ? WHERE worktree_id = ?'
+    ).run(now, worktreeId)
   }
 
   updateProjectSimpleMode(projectId: string, enabled: boolean): void {

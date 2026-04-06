@@ -61,6 +61,14 @@ export function registerKanbanHandlers(): void {
     return getDatabase().getKanbanTicket(id)
   })
 
+  ipcMain.handle('kanban:ticket:syncPR', (_event, worktreeId: string, prNumber: number, prUrl: string) => {
+    return getDatabase().syncPRToTickets(worktreeId, prNumber, prUrl)
+  })
+
+  ipcMain.handle('kanban:ticket:clearPR', (_event, worktreeId: string) => {
+    return getDatabase().clearPRFromTickets(worktreeId)
+  })
+
   ipcMain.handle('kanban:simpleMode:toggle', (_event, projectId: string, enabled: boolean) => {
     return getDatabase().updateProjectSimpleMode(projectId, enabled)
   })

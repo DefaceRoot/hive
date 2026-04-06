@@ -279,6 +279,14 @@ export function registerDatabaseHandlers(): void {
     return getDatabase().getActiveSessionsByConnection(connectionId)
   })
 
+  ipcMain.handle('db:session:setPinnedToBoard', (_event, sessionId: string, pinned: boolean) => {
+    return getDatabase().updateSession(sessionId, { pinned_to_board: pinned })
+  })
+
+  ipcMain.handle('db:session:getPinnedSessions', (_event, worktreeId: string) => {
+    return getDatabase().getPinnedSessions(worktreeId)
+  })
+
   ipcMain.handle('db:session:search', (_event, options: SessionSearchOptions) => {
     return getDatabase().searchSessions(options)
   })

@@ -1,4 +1,4 @@
-export const CURRENT_SCHEMA_VERSION = 18
+export const CURRENT_SCHEMA_VERSION = 20
 
 export const SCHEMA_SQL = `
 -- Projects table
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS projects (
   run_script TEXT DEFAULT NULL,
   archive_script TEXT DEFAULT NULL,
   custom_icon TEXT DEFAULT NULL,
+  detected_icon TEXT DEFAULT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
   auto_assign_port INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   opencode_session_id TEXT,
   mode TEXT NOT NULL DEFAULT 'build',
   draft_input TEXT DEFAULT NULL,
+  pinned_to_board INTEGER NOT NULL DEFAULT 0,
   model_provider_id TEXT,
   model_id TEXT,
   model_variant TEXT,
@@ -406,6 +408,20 @@ export const MIGRATIONS: Migration[] = [
     version: 18,
     name: 'add_ticket_total_tokens',
     up: `ALTER TABLE kanban_tickets ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0`,
+    down: `-- SQLite cannot drop columns; this is a no-op for safety`
+  },
+  {
+    version: 19,
+    name: 'add_project_detected_icon',
+    up: `ALTER TABLE projects ADD COLUMN detected_icon TEXT DEFAULT NULL`,
+    down: `-- SQLite cannot drop columns; this is a no-op for safety`
+  },
+  {
+    version: 20,
+    name: 'add_pinned_to_board_and_ticket_pr',
+    up: `ALTER TABLE sessions ADD COLUMN pinned_to_board INTEGER NOT NULL DEFAULT 0;
+         ALTER TABLE kanban_tickets ADD COLUMN github_pr_number INTEGER DEFAULT NULL;
+         ALTER TABLE kanban_tickets ADD COLUMN github_pr_url TEXT DEFAULT NULL;`,
     down: `-- SQLite cannot drop columns; this is a no-op for safety`
   }
 ]

@@ -18,7 +18,13 @@ import {
   AlertCircle,
   Bolt,
   Play,
-  Square
+  Square,
+  FileSearch,
+  GitPullRequest,
+  GitMerge,
+  Archive,
+  Loader2,
+  Github
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -41,7 +47,7 @@ import { useWorktreeStore } from '@/stores/useWorktreeStore'
 import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useWorktreeStatusStore } from '@/stores/useWorktreeStatusStore'
 import { useProjectStore } from '@/stores/useProjectStore'
-import { resolveModelForSdk } from '@/stores/useSettingsStore'
+import { useSettingsStore, resolveModelForSdk } from '@/stores/useSettingsStore'
 import { notifyKanbanSessionSync } from '@/stores/store-coordination'
 import { messageSendTimes, lastSendMode, userExplicitSendTimes } from '@/lib/message-send-times'
 import { snapshotTokenBaseline } from '@/lib/token-baselines'
@@ -54,6 +60,8 @@ import { useQuestionStore, type QuestionRequest } from '@/stores/useQuestionStor
 import { QuestionPrompt } from '@/components/sessions/QuestionPrompt'
 import { SessionStreamPanel } from './SessionStreamPanel'
 import { ProviderIcon, getProviderLabel } from '@/components/ui/provider-icon'
+import { useLifecycleActions } from '@/hooks/useLifecycleActions'
+import { usePinAndActivateSession } from '@/hooks/usePinAndActivateSession'
 import type { KanbanTicket, KanbanTicketUpdate } from '../../../../main/db/types'
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -252,7 +260,10 @@ async function sendFollowupToSession(opts: {
   // SessionView does this on mount via initializeSession(), but the kanban
   // followup path bypasses SessionView entirely.  Without this, the Claude Code
   // implementer throws "session not found" because its Map was never populated.
-  await window.opencodeOps.reconnect(workingPath, session.opencode_session_id, opts.sessionId)
+  const reconnectResult = await window.opencodeOps.reconnect(workingPath, session.opencode_session_id, opts.sessionId)
+  if (!reconnectResult.success) {
+    throw new Error(`Failed to reconnect to session: ${opts.sessionId}`)
+  }
 
   const promptResult = await window.opencodeOps.prompt(workingPath, session.opencode_session_id, [
     { type: 'text', text: fullPrompt }
@@ -743,7 +754,14 @@ function EditModeContent({
   const [showAttachInput, setShowAttachInput] = useState(false)
   const [attachUrl, setAttachUrl] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const lifecycle = useLifecycleActions(ticket.worktree_id)
+  const { pinAndActivate: pinAndActivateSession, lifecycleLoading } = usePinAndActivateSession(onClose)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // Load live PR state so merge-button guard works (hide if already merged/closed)
+  useEffect(() => {
+    if (lifecycle.hasAttachedPR) lifecycle.loadPRState()
+  }, [lifecycle.hasAttachedPR])
 
   const detectedAttachment = attachUrl.trim() ? parseAttachmentUrl(attachUrl.trim()) : null
 
@@ -786,8 +804,18 @@ function EditModeContent({
     }
   }, [deleteTicket, ticket.id, ticket.project_id, onClose])
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && title.trim()) {
+        e.preventDefault()
+        handleSave()
+      }
+    },
+    [handleSave, title]
+  )
+
   return (
-    <>
+    <div onKeyDown={handleKeyDown}>
       <DialogHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -962,7 +990,7 @@ function EditModeContent({
         </div>
       </div>
 
-      <DialogFooter className="flex items-center justify-between sm:justify-between">
+      <DialogFooter className="flex items-center justify-between sm:justify-between flex-wrap gap-y-2">
         <div>
           {showDeleteConfirm ? (
             <div className="flex items-center gap-2">
@@ -998,7 +1026,51 @@ function EditModeContent({
             </Button>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {ticket.column === 'done' && ticket.worktree_id && (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5"
+              disabled={lifecycleLoading}
+              onClick={() => pinAndActivateSession(() => lifecycle.createCodeReview())}
+            >
+              <FileSearch className="h-3.5 w-3.5" />
+              Review
+            </Button>
+          )}
+          {ticket.column === 'done' && ticket.worktree_id && lifecycle.isGitHub &&
+            lifecycle.hasAttachedPR && lifecycle.prLiveState?.state !== 'MERGED' &&
+            lifecycle.prLiveState?.state !== 'CLOSED' && (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5 bg-emerald-600/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-600/20"
+              onClick={() => lifecycle.mergePR()}
+              disabled={lifecycle.isMergingPR}
+            >
+              {lifecycle.isMergingPR ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <GitMerge className="h-3.5 w-3.5" />
+              )}
+              {lifecycle.isMergingPR ? 'Merging...' : 'Merge PR'}
+            </Button>
+          )}
+          {ticket.column === 'done' && ticket.worktree_id && (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5 border-red-500/30 text-red-500 hover:bg-red-500/10"
+              onClick={() => {
+                onClose()
+                lifecycle.archiveWorktree()
+              }}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archive
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -1017,7 +1089,7 @@ function EditModeContent({
           </Button>
         </div>
       </DialogFooter>
-    </>
+    </div>
   )
 }
 
@@ -1112,6 +1184,20 @@ function PlanReviewModeContent({
             .setSessionStatus(sessionId, 'planning')
           toast.success('Plan rejected with feedback')
           onClose()
+
+          // Send the rejection feedback to the session in background.
+          // UI is already updated (plan cleared, status set, modal closed).
+          sendFollowupToSession({
+            sessionId,
+            prompt: feedback,
+            followUpMode,
+            ticketId: ticket.id,
+          }).catch((err) => {
+            console.error('[KanbanTicketModal] sendFollowupToSession failed:', err)
+            const reason = err instanceof Error ? err.message : String(err)
+            toast.error(`Failed to send followup: ${reason}`)
+            useWorktreeStatusStore.getState().clearSessionStatus(sessionId)
+          })
           return
         }
       }
@@ -1228,7 +1314,14 @@ function PlanReviewModeContent({
       const handoffPrompt = `Implement the following plan\n${planContent}`
       await sessionStore.setSessionMode(result.session.id, 'build')
       sessionStore.setPendingMessage(result.session.id, handoffPrompt)
-      sessionStore.setActiveSession(result.session.id)
+
+      // In sticky-tab mode, stay on the board; otherwise navigate to the new session
+      const { BOARD_TAB_ID } = await import('@/stores/useSessionStore')
+      if (useSettingsStore.getState().boardMode === 'sticky-tab') {
+        sessionStore.setActiveSession(BOARD_TAB_ID)
+      } else {
+        sessionStore.setActiveSession(result.session.id)
+      }
 
       // Clear plan_ready badge and link to new session
       await useKanbanStore.getState().updateTicket(ticket.id, ticket.project_id, {
@@ -1318,7 +1411,7 @@ function PlanReviewModeContent({
 
       // Create session in the new worktree
       const sessionStore = useSessionStore.getState()
-      const sessionResult = await sessionStore.createSession(dupResult.worktree.id, project.id)
+      const sessionResult = await sessionStore.createSession(dupResult.worktree.id, project.id, undefined, undefined, { autoFocus: false })
       if (!sessionResult.success || !sessionResult.session) {
         toast.error(sessionResult.error ?? 'Failed to create supercharge session')
         return
@@ -1363,7 +1456,7 @@ function PlanReviewModeContent({
 
       // Create a new session in the SAME worktree
       const sessionStore = useSessionStore.getState()
-      const sessionResult = await sessionStore.createSession(ticket.worktree_id, ticket.project_id)
+      const sessionResult = await sessionStore.createSession(ticket.worktree_id, ticket.project_id, undefined, undefined, { autoFocus: false })
       if (!sessionResult.success || !sessionResult.session) {
         toast.error(sessionResult.error ?? 'Failed to create local supercharge session')
         return
@@ -1534,6 +1627,13 @@ function ReviewModeContent({
   const [followUpMode, setFollowUpMode] = useState<FollowUpMode>('build')
   const [isSending, setIsSending] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const lifecycle = useLifecycleActions(ticket.worktree_id)
+  const { pinAndActivate: pinAndActivateSession, lifecycleLoading } = usePinAndActivateSession(onClose)
+
+  // Load live PR state so merge-button guard works (hide if already merged/closed)
+  useEffect(() => {
+    if (lifecycle.hasAttachedPR) lifecycle.loadPRState()
+  }, [lifecycle.hasAttachedPR])
 
   // Display ticket description as context, with notice to view session for full conversation
   const reviewDescription = ticket.description ?? null
@@ -1660,7 +1760,6 @@ function ReviewModeContent({
             const doneTickets = kanbanStore.getTicketsByColumn(ticket.project_id, 'done')
             const sortOrder = kanbanStore.computeSortOrder(doneTickets, doneTickets.length)
             kanbanStore.setPendingDoneMove({ ticketId: ticket.id, projectId: ticket.project_id, sortOrder })
-            onClose()
             return
           }
         }
@@ -1676,11 +1775,10 @@ function ReviewModeContent({
       const sortOrder = kanbanStore.computeSortOrder(doneTickets, doneTickets.length)
       await moveTicket(ticket.id, ticket.project_id, 'done', sortOrder)
       toast.success('Ticket moved to Done')
-      onClose()
     } catch {
       toast.error('Failed to move ticket')
     }
-  }, [ticket, moveTicket, onClose])
+  }, [ticket, moveTicket])
 
   // ── Run / Stop handlers ────────────────────────────────────────────
   const handleRunScript = useCallback(() => {
@@ -1728,7 +1826,18 @@ function ReviewModeContent({
       <DialogHeader>
         <div className="flex items-center justify-between">
           <DialogTitle>{dualPane ? 'Review' : ticket.title}</DialogTitle>
-          <JumpToSessionButton ticket={ticket} onClose={onClose} />
+          <div className="flex items-center gap-2">
+            {lifecycle.hasAttachedPR && lifecycle.attachedPR && (
+              <button
+                onClick={() => lifecycle.openPRInBrowser()}
+                className="inline-flex items-center gap-1 rounded-full bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/60 transition-colors"
+              >
+                <Github className="h-3 w-3" />
+                #{lifecycle.attachedPR.number}
+              </button>
+            )}
+            <JumpToSessionButton ticket={ticket} onClose={onClose} />
+          </div>
         </div>
         <DialogDescription>Review the session output and provide followup.</DialogDescription>
       </DialogHeader>
@@ -1788,7 +1897,7 @@ function ReviewModeContent({
         />
       </div>
 
-      <DialogFooter className="flex-shrink-0">
+      <DialogFooter className="flex-shrink-0 flex-wrap gap-y-2">
         <Button
           type="button"
           variant="outline"
@@ -1811,6 +1920,48 @@ function ReviewModeContent({
             )}
           >
             {runRunning ? <><Square className="h-3.5 w-3.5" /> Stop</> : <><Play className="h-3.5 w-3.5" /> Run</>}
+              <kbd className="ml-1 text-[10px] opacity-60 font-sans">⌘R</kbd>
+          </Button>
+        )}
+        {ticket.worktree_id && (
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5"
+            disabled={lifecycleLoading}
+            onClick={() => pinAndActivateSession(() => lifecycle.createCodeReview())}
+          >
+            <FileSearch className="h-3.5 w-3.5" />
+            Review
+          </Button>
+        )}
+        {ticket.worktree_id && lifecycle.isGitHub && !lifecycle.hasAttachedPR && (
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5"
+            disabled={lifecycleLoading}
+            onClick={() => pinAndActivateSession(() => lifecycle.createPR())}
+          >
+            <GitPullRequest className="h-3.5 w-3.5" />
+            Create PR
+          </Button>
+        )}
+        {ticket.worktree_id && lifecycle.isGitHub && lifecycle.hasAttachedPR &&
+          lifecycle.prLiveState?.state !== 'MERGED' && lifecycle.prLiveState?.state !== 'CLOSED' && (
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5 bg-emerald-600/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-600/20"
+            onClick={() => lifecycle.mergePR()}
+            disabled={lifecycle.isMergingPR}
+          >
+            {lifecycle.isMergingPR ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <GitMerge className="h-3.5 w-3.5" />
+            )}
+            {lifecycle.isMergingPR ? 'Merging...' : 'Merge PR'}
           </Button>
         )}
         <Button

@@ -54,6 +54,9 @@ interface FileViewerState {
   closeContextEditor: () => void
   activateContextEditor: (worktreeId: string) => void
 
+  hasActiveOverlay: () => boolean
+  clearActiveViews: () => void
+
   openFile: (path: string, name: string, worktreeId: string) => void
   closeFile: (path: string) => void
   setActiveFile: (path: string | null) => void
@@ -133,6 +136,30 @@ export const useFileViewerStore = create<FileViewerState>((set, get) => ({
       activeFilePath: tabKey,
       activeDiff: null,
       contextEditorWorktreeId: worktreeId
+    })
+  },
+
+  hasActiveOverlay: () => {
+    const s = get()
+    return s.activeFilePath !== null || s.activeDiff !== null || s.contextEditorWorktreeId !== null
+  },
+
+  clearActiveViews: () => {
+    set((state) => {
+      // Remove context tab from openFiles if present
+      const tabKey = state.contextEditorWorktreeId
+        ? `context:${state.contextEditorWorktreeId}`
+        : null
+      const openFiles = tabKey
+        ? (() => { const m = new Map(state.openFiles); m.delete(tabKey); return m })()
+        : state.openFiles
+
+      return {
+        openFiles,
+        activeFilePath: null,
+        activeDiff: null,
+        contextEditorWorktreeId: null
+      }
     })
   },
 

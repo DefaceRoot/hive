@@ -6,6 +6,7 @@ export interface Project {
   tags: string | null // JSON array
   language: string | null
   custom_icon: string | null
+  detected_icon: string | null
   setup_script: string | null
   run_script: string | null
   archive_script: string | null
@@ -31,6 +32,7 @@ export interface ProjectUpdate {
   tags?: string[] | null
   language?: string | null
   custom_icon?: string | null
+  detected_icon?: string | null
   setup_script?: string | null
   run_script?: string | null
   archive_script?: string | null
@@ -104,6 +106,7 @@ export interface Session {
   created_at: string
   updated_at: string
   completed_at: string | null
+  pinned_to_board: boolean
 }
 
 export interface SessionCreate {
@@ -117,6 +120,7 @@ export interface SessionCreate {
   model_provider_id?: string | null
   model_id?: string | null
   model_variant?: string | null
+  pinned_to_board?: boolean
 }
 
 export interface SessionUpdate {
@@ -130,6 +134,7 @@ export interface SessionUpdate {
   model_variant?: string | null
   updated_at?: string
   completed_at?: string | null
+  pinned_to_board?: boolean
 }
 
 export interface SessionMessage {
@@ -352,6 +357,8 @@ export interface KanbanTicket {
   external_provider: string | null
   external_id: string | null
   external_url: string | null
+  github_pr_number: number | null
+  github_pr_url: string | null
   total_tokens: number
 }
 
@@ -370,6 +377,8 @@ export interface KanbanTicketCreate {
   external_provider?: string | null
   external_id?: string | null
   external_url?: string | null
+  github_pr_number?: number | null
+  github_pr_url?: string | null
 }
 
 export interface KanbanTicketUpdate {
@@ -382,6 +391,8 @@ export interface KanbanTicketUpdate {
   worktree_id?: string | null
   mode?: 'build' | 'plan' | 'super-plan' | null
   plan_ready?: boolean
+  github_pr_number?: number | null
+  github_pr_url?: string | null
 }
 
 // Ticket followup message types

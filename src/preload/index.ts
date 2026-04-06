@@ -138,7 +138,11 @@ const db = {
     getByConnection: (connectionId: string) =>
       ipcRenderer.invoke('db:session:getByConnection', connectionId),
     getActiveByConnection: (connectionId: string) =>
-      ipcRenderer.invoke('db:session:getActiveByConnection', connectionId)
+      ipcRenderer.invoke('db:session:getActiveByConnection', connectionId),
+    setPinnedToBoard: (sessionId: string, pinned: boolean) =>
+      ipcRenderer.invoke('db:session:setPinnedToBoard', sessionId, pinned),
+    getPinnedSessions: (worktreeId: string) =>
+      ipcRenderer.invoke('db:session:getPinnedSessions', worktreeId)
   },
 
   sessionMessage: {
@@ -234,7 +238,15 @@ const projectOps = {
 
   // Resolve an icon filename to a full file path
   getProjectIconPath: (filename: string): Promise<string | null> =>
-    ipcRenderer.invoke('project:getIconPath', filename)
+    ipcRenderer.invoke('project:getIconPath', filename),
+
+  // Detect project favicon from well-known paths
+  detectFavicon: (projectPath: string): Promise<string | null> =>
+    ipcRenderer.invoke('project:detectFavicon', projectPath),
+
+  // Resolve an absolute icon path to a data URL
+  getAbsoluteIconDataUrl: (absolutePath: string): Promise<string | null> =>
+    ipcRenderer.invoke('project:getAbsoluteIconDataUrl', absolutePath)
 }
 
 // Worktree operations API
@@ -1836,6 +1848,10 @@ const kanban = {
       ipcRenderer.invoke('kanban:ticket:getBySession', sessionId),
     addTokens: (id: string, tokens: number) =>
       ipcRenderer.invoke('kanban:ticket:addTokens', id, tokens),
+    syncPR: (worktreeId: string, prNumber: number, prUrl: string) =>
+      ipcRenderer.invoke('kanban:ticket:syncPR', worktreeId, prNumber, prUrl),
+    clearPR: (worktreeId: string) =>
+      ipcRenderer.invoke('kanban:ticket:clearPR', worktreeId),
   },
   simpleMode: {
     toggle: (projectId: string, enabled: boolean) =>

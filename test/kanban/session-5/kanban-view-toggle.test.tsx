@@ -62,6 +62,7 @@ if (window.gitOps) {
 
 // Import stores after mocking
 import { useKanbanStore } from '@/stores/useKanbanStore'
+import { useFileViewerStore } from '@/stores/useFileViewerStore'
 import { useProjectStore } from '@/stores/useProjectStore'
 import { useWorktreeStore } from '@/stores/useWorktreeStore'
 import { useSessionStore } from '@/stores/useSessionStore'
@@ -263,6 +264,59 @@ describe('Session 5: View Toggle', () => {
 
     // Board should not be present
     expect(screen.queryByTestId('kanban-board')).not.toBeInTheDocument()
+  })
+
+  // ── Board tab refocus tests ─────────────────────────────────────
+  test('clicking toggle when board active and file tab focused refocuses Board tab', async () => {
+    setProjectSelected('proj-1')
+    setWorktreeSelected('wt-1')
+
+    // Board is already active
+    act(() => {
+      useKanbanStore.setState({ isBoardViewActive: true })
+    })
+
+    // A file tab is focused
+    act(() => {
+      useFileViewerStore.setState({ activeFilePath: '/tmp/test/main/file.ts' })
+    })
+
+    render(<Header />)
+    const toggleBtn = screen.getByTestId('kanban-board-toggle')
+
+    await act(async () => {
+      fireEvent.click(toggleBtn)
+    })
+
+    // Board should still be active (NOT toggled off)
+    expect(useKanbanStore.getState().isBoardViewActive).toBe(true)
+    // File tab should be cleared so Board tab regains focus
+    expect(useFileViewerStore.getState().activeFilePath).toBeNull()
+  })
+
+  test('clicking toggle when board active and Board tab focused closes the board', async () => {
+    setProjectSelected('proj-1')
+    setWorktreeSelected('wt-1')
+
+    // Board is already active, no file tab focused
+    act(() => {
+      useKanbanStore.setState({ isBoardViewActive: true })
+      useFileViewerStore.setState({
+        activeFilePath: null,
+        activeDiff: null,
+        contextEditorWorktreeId: null
+      })
+    })
+
+    render(<Header />)
+    const toggleBtn = screen.getByTestId('kanban-board-toggle')
+
+    await act(async () => {
+      fireEvent.click(toggleBtn)
+    })
+
+    // Board should be closed
+    expect(useKanbanStore.getState().isBoardViewActive).toBe(false)
   })
 
   // ── Command palette command test ────────────────────────────────

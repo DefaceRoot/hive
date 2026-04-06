@@ -65,14 +65,24 @@ export function _resetLastSourceBranch(): void {
 }
 
 // ── Prompt template builders ────────────────────────────────────────
-function buildPrompt(mode: PickerMode, ticket: KanbanTicket): string {
-  const prefix =
-    mode === 'build'
-      ? 'Please implement the following ticket.'
-      : mode === 'plan'
-        ? 'Please review the following ticket and create a detailed implementation plan.'
-        : 'Please review the following ticket and create a detailed implementation plan.'  // super-plan same as plan
+function getModePrefix(mode: PickerMode): string {
+  return mode === 'build'
+    ? 'Please implement the following ticket.'
+    : 'Please review the following ticket and create a detailed implementation plan.'
+}
 
+function swapModePrefix(text: string, fromMode: PickerMode, toMode: PickerMode): string {
+  const fromPrefix = getModePrefix(fromMode)
+  const toPrefix = getModePrefix(toMode)
+  if (fromPrefix === toPrefix) return text          // plan ↔ super-plan: same prefix
+  if (text.startsWith(fromPrefix)) {
+    return toPrefix + text.slice(fromPrefix.length)  // swap prefix, keep the rest
+  }
+  return text                                        // prefix not found: don't touch
+}
+
+function buildPrompt(mode: PickerMode, ticket: KanbanTicket): string {
+  const prefix = getModePrefix(mode)
   const description = ticket.description ?? ''
   return `${prefix}\n\n<ticket title="${ticket.title}">${description}</ticket>`
 }
@@ -229,29 +239,24 @@ export function WorktreePickerModal({
   // ── Handle mode toggle ──────────────────────────────────────────
   const toggleMode = useCallback(() => {
     setMode((prev) => {
-      let next: PickerMode
-      if (prev === 'build') {
-        next = superArmed ? 'super-plan' : 'plan'
-      } else {
-        next = 'build'
-      }
-      setPromptText(buildPrompt(next, ticket))
+      const next: PickerMode = prev === 'build'
+        ? (superArmed ? 'super-plan' : 'plan')
+        : 'build'
+      setPromptText((current) => swapModePrefix(current, prev, next))
       return next
     })
-  }, [ticket, superArmed])
+  }, [superArmed])
 
   // ── Handle SUPER toggle ─────────────────────────────────────────
   const toggleSuper = useCallback(() => {
     if (mode === 'plan') {
       setMode('super-plan')
       setSuperArmed(true)
-      setPromptText(buildPrompt('super-plan', ticket))
     } else if (mode === 'super-plan') {
       setMode('plan')
       setSuperArmed(false)
-      setPromptText(buildPrompt('plan', ticket))
     }
-  }, [mode, ticket])
+  }, [mode])
 
   // ── Handle Tab key: toggle mode + focus prompt textarea ────────
   // Must use window-level capture-phase listener to beat SessionView's
@@ -328,6 +333,13 @@ export function WorktreePickerModal({
         const sessionId = sessionResult.session.id
         const sessionAgentSdk = sessionResult.session.agent_sdk
 
+        // Set status tracking immediately so the sidebar shows spinning right away.
+        messageSendTimes.set(sessionId, Date.now())
+        userExplicitSendTimes.set(sessionId, Date.now())
+        snapshotTokenBaseline(sessionId)
+        lastSendMode.set(sessionId, mode)
+        useWorktreeStatusStore.getState().setSessionStatus(sessionId, isPlanLike(mode) ? 'planning' : 'working')
+
         // Apply model override
         const effectiveModel = supportsModelSelection
           ? selectedModel ?? autoResolvedModel ?? undefined
@@ -365,13 +377,6 @@ export function WorktreePickerModal({
 
         useSessionStore.getState().setOpenCodeSessionId(sessionId, connectResult.sessionId)
         await window.db.session.update(sessionId, { opencode_session_id: connectResult.sessionId })
-
-        // Set status tracking
-        messageSendTimes.set(sessionId, Date.now())
-        userExplicitSendTimes.set(sessionId, Date.now())
-        snapshotTokenBaseline(sessionId)
-        lastSendMode.set(sessionId, mode)
-        useWorktreeStatusStore.getState().setSessionStatus(sessionId, isPlanLike(mode) ? 'planning' : 'working')
 
         // Send prompt
         if (promptText.trim()) {
@@ -476,6 +481,18 @@ export function WorktreePickerModal({
       const sessionId = sessionResult.session.id
       const sessionAgentSdk = sessionResult.session.agent_sdk
 
+      // Set status tracking immediately so the sidebar shows spinning right away.
+      // This must happen before any async work (connect, prompt) to avoid a race
+      // where loadSessions wipes the session from sessionsByWorktree before the
+      // status is set.
+      messageSendTimes.set(sessionId, Date.now())
+      userExplicitSendTimes.set(sessionId, Date.now())
+      snapshotTokenBaseline(sessionId)
+      lastSendMode.set(sessionId, mode)
+      useWorktreeStatusStore
+        .getState()
+        .setSessionStatus(sessionId, isPlanLike(mode) ? 'planning' : 'working')
+
       // Apply user's model override to the session if they explicitly picked one
       const effectiveModel = supportsModelSelection
         ? selectedModel ?? autoResolvedModel ?? undefined
@@ -501,6 +518,12 @@ export function WorktreePickerModal({
         plan_ready: false
       })
 
+      // In sticky-tab mode, stay on the board instead of switching to the new session
+      if (useSettingsStore.getState().boardMode === 'sticky-tab') {
+        const { BOARD_TAB_ID } = await import('@/stores/useSessionStore')
+        useSessionStore.getState().setActiveSession(BOARD_TAB_ID)
+      }
+
       // Close modal immediately — session starts in background
       onSendComplete?.()
       onOpenChange(false)
@@ -523,15 +546,6 @@ export function WorktreePickerModal({
       await window.db.session.update(sessionId, {
         opencode_session_id: connectResult.sessionId
       })
-
-      // Set status tracking so the global listener can compute completion badges
-      messageSendTimes.set(sessionId, Date.now())
-      userExplicitSendTimes.set(sessionId, Date.now())
-      snapshotTokenBaseline(sessionId)
-      lastSendMode.set(sessionId, mode)
-      useWorktreeStatusStore
-        .getState()
-        .setSessionStatus(sessionId, isPlanLike(mode) ? 'planning' : 'working')
 
       // Send the prompt — apply plan mode prefix for opencode SDK
       if (promptText.trim()) {

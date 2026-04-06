@@ -86,6 +86,7 @@ interface Session {
   created_at: string
   updated_at: string
   completed_at: string | null
+  pinned_to_board: boolean
 }
 
 interface Setting {
@@ -173,6 +174,8 @@ interface KanbanTicket {
   created_at: string
   updated_at: string
   archived_at: string | null
+  github_pr_number: number | null
+  github_pr_url: string | null
 }
 
 interface KanbanTicketCreate {
@@ -186,6 +189,8 @@ interface KanbanTicketCreate {
   worktree_id?: string | null
   mode?: 'build' | 'plan' | null
   plan_ready?: boolean
+  github_pr_number?: number | null
+  github_pr_url?: string | null
 }
 
 interface KanbanTicketUpdate {
@@ -198,6 +203,8 @@ interface KanbanTicketUpdate {
   worktree_id?: string | null
   mode?: 'build' | 'plan' | null
   plan_ready?: boolean
+  github_pr_number?: number | null
+  github_pr_url?: string | null
 }
 
 declare global {
@@ -359,6 +366,8 @@ declare global {
         updateDraft: (sessionId: string, draft: string | null) => Promise<void>
         getByConnection: (connectionId: string) => Promise<Session[]>
         getActiveByConnection: (connectionId: string) => Promise<Session[]>
+        setPinnedToBoard: (sessionId: string, pinned: boolean) => Promise<Session | null>
+        getPinnedSessions: (worktreeId: string) => Promise<Session[]>
       }
       sessionMessage: {
         list: (sessionId: string) => Promise<SessionMessage[]>
@@ -417,6 +426,8 @@ declare global {
         error?: string
       }>
       getProjectIconPath: (filename: string) => Promise<string | null>
+      detectFavicon: (projectPath: string) => Promise<string | null>
+      getAbsoluteIconDataUrl: (absolutePath: string) => Promise<string | null>
     }
     worktreeOps: {
       hasCommits: (projectPath: string) => Promise<boolean>
@@ -1349,6 +1360,8 @@ declare global {
         reorder: (id: string, sortOrder: number) => Promise<void>
         getBySession: (sessionId: string) => Promise<KanbanTicket[]>
         addTokens: (id: string, tokens: number) => Promise<KanbanTicket | null>
+        syncPR: (worktreeId: string, prNumber: number, prUrl: string) => Promise<void>
+        clearPR: (worktreeId: string) => Promise<void>
       }
       simpleMode: {
         toggle: (projectId: string, enabled: boolean) => Promise<void>

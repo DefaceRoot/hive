@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
-import { Paperclip, AlertCircle, Trash2, Archive, ArchiveRestore, GitBranch, ExternalLink, X, FileText, Pin, PinOff, RefreshCw, Link as LinkIcon } from 'lucide-react'
+import { Paperclip, AlertCircle, Trash2, Archive, ArchiveRestore, GitBranch, ExternalLink, X, FileText, Pin, PinOff, RefreshCw, Link as LinkIcon, Github } from 'lucide-react'
 import { UpdateStatusModal } from './UpdateStatusModal'
 import { cn } from '@/lib/utils'
 import { ProviderIcon, getProviderLabel } from '@/components/ui/provider-icon'
@@ -312,6 +312,22 @@ export const KanbanTicketCard = memo(function KanbanTicketCard({
     useKanbanStore.getState().setSelectedTicketId(ticket.id)
   }, [ticket.id])
 
+  // ── Middle-click — select attached worktree (same as sidebar) ─
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 1) return            // only middle-click
+      if (!ticket.worktree_id) return        // no-op for unassigned tickets
+      if (isArchived) return                 // no-op for archived tickets
+      e.preventDefault()                     // suppress browser auto-scroll
+
+      // Select worktree — same as sidebar's WorktreeItem.handleClick
+      useWorktreeStore.getState().selectWorktree(ticket.worktree_id)
+      useProjectStore.getState().selectProject(ticket.project_id)
+      useWorktreeStatusStore.getState().clearWorktreeUnread(ticket.worktree_id)
+    },
+    [ticket.worktree_id, ticket.project_id, isArchived]
+  )
+
   const isDone = ticket.column === 'done'
 
   // ── Context menu handlers ─────────────────────────────────────
@@ -414,6 +430,7 @@ export const KanbanTicketCard = memo(function KanbanTicketCard({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onClick={handleClick}
+            onMouseDown={handleMouseDown}
             className={cn(
               'group cursor-pointer rounded-md border bg-card shadow-sm p-2 transition-all duration-200',
               'hover:bg-muted/40',
@@ -451,7 +468,7 @@ export const KanbanTicketCard = memo(function KanbanTicketCard({
             </div>
 
             {/* Badges + progress row */}
-            {(hasAttachments || worktreeName || projectTag || connectionName || ticket.plan_ready || isError || isBusy || isAsking || isArchived || isRunProcessAlive) && (
+            {(hasAttachments || worktreeName || projectTag || connectionName || ticket.plan_ready || isError || isBusy || isAsking || isArchived || isRunProcessAlive || ticket.github_pr_number) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                 {/* Archived badge */}
                 {isArchived && (
@@ -491,6 +508,21 @@ export const KanbanTicketCard = memo(function KanbanTicketCard({
                   </span>
                 )}
 
+                {/* PR badge */}
+                {ticket.github_pr_number && ticket.github_pr_url && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.systemOps.openInChrome(ticket.github_pr_url!)
+                    }}
+                    title={`Open PR #${ticket.github_pr_number} in browser`}
+                    className="inline-flex items-center gap-1 rounded-full bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/60 transition-colors"
+                  >
+                    <Github className="h-3 w-3" />
+                    #{ticket.github_pr_number}
+                  </button>
+                )}
+
                 {/* Run process alive indicator */}
                 {isRunProcessAlive && (
                   <PulseAnimation className="h-3 w-3 text-green-500 shrink-0" />
@@ -526,6 +558,11 @@ export const KanbanTicketCard = memo(function KanbanTicketCard({
                       </span>
                     )}
                     <IndeterminateProgressBar mode={ticket.mode} isAsking={isAsking} className="w-20" />
+                    {isAsking && (
+                      <span className="text-[11px] font-semibold text-amber-500">
+                        Question
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
