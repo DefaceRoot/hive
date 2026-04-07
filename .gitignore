@@ -59,6 +59,8 @@ scripts/*
 !scripts/release.sh
 !scripts/prepare-win-deps.sh
 !scripts/codex-app-server-probe.ts
+!scripts/install-linux-dev-launcher.js
+!scripts/launch-local.sh
 
 # Claude worktrees
 .claude/worktrees/
